@@ -1,0 +1,54 @@
+# =============================================================================
+#  PRISMA — .dockerignore
+#  Exclui arquivos desnecessários do contexto de build
+# =============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Laravel / PHP
+storage/framework/cache/data/*
+storage/logs/*
+bootstrap/cache/*.php
+
+# Docker (apenas os arquivos de orquestração, NÃO a pasta docker/ com configs)
+docker-compose*.yml
+Dockerfile
+
+# Ambiente
+.env
+.env.docker
+.env.*.local
+
+# Dev tools
+.editorconfig
+.phpunit.result.cache
+phpunit.xml
+phpcs.xml
+.pint.json
+
+# IDE
+.idea
+.vscode
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+tests/
+coverage/
+.phpunit.cache
+
+# Docs
+*.md
+README*
+CHANGELOG*
