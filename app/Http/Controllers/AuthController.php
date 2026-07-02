@@ -14,6 +14,9 @@ class AuthController extends Controller
     public function showLoginForm()
     {
         if (Auth::check()) {
+            if (Auth::user()->role === 'admin') {
+                return redirect()->route('admin.dashboard');
+            }
             if (Auth::user()->role === 'atendente') {
                 return redirect()->route('atendente.dashboard');
             }
@@ -38,6 +41,11 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $remember)) {
             $request->session()->regenerate();
 
+            \App\Models\ActivityLog::writeLog('Autenticação', 'LOGIN', 'Usuário realizou login com sucesso no sistema.');
+
+            if (Auth::user()->role === 'admin') {
+                return redirect()->intended(route('admin.dashboard'));
+            }
             if (Auth::user()->role === 'atendente') {
                 return redirect()->intended(route('atendente.dashboard'));
             }
@@ -55,6 +63,10 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        if (Auth::check()) {
+            \App\Models\ActivityLog::writeLog('Autenticação', 'LOGOUT', 'Usuário realizou logout do sistema.');
+        }
+
         Auth::logout();
 
         $request->session()->invalidate();

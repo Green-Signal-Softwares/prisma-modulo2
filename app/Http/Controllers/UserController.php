@@ -38,11 +38,13 @@ class UserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        User::create([
+        $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
+        \App\Models\ActivityLog::writeLog('Criação', 'USUÁRIO', "Criou o usuário: {$user->name} ({$user->email})");
 
         return redirect()->route('users.index')->with('success', 'Usuário criado com sucesso!');
     }
@@ -56,6 +58,8 @@ class UserController extends Controller
         if ($user->id === auth()->id()) {
             return redirect()->route('users.index')->with('error', 'Você não pode excluir a si mesmo.');
         }
+
+        \App\Models\ActivityLog::writeLog('Exclusão', 'USUÁRIO', "Excluiu o usuário: {$user->name} ({$user->email})");
 
         $user->delete();
 

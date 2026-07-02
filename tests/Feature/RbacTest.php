@@ -109,4 +109,47 @@ class RbacTest extends TestCase
         // Agent access
         $this->actingAs($agent)->get(route('atendente.historico'))->assertOk();
     }
+
+    public function test_admin_rbac_redirections_and_access()
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $agent = User::factory()->create(['role' => 'atendente']);
+        $client = User::factory()->create(['role' => 'user']);
+
+        // 1. Guests are redirected
+        $this->get(route('admin.dashboard'))->assertRedirect(route('login'));
+
+        // 2. Client and agent are redirected to their respective dashboards when attempting to access admin dashboard
+        $this->actingAs($client)->get(route('admin.dashboard'))->assertRedirect(route('dashboard'));
+        $this->actingAs($agent)->get(route('admin.dashboard'))->assertRedirect(route('atendente.dashboard'));
+
+        // 3. Admin can access admin dashboard and see all solicitations
+        Solicitation::create([
+            'user_id' => $client->id,
+            'title' => 'Admin Test Sol',
+            'description' => 'Admin Desc',
+            'status' => 'aberta',
+            'ticket_number' => '999'
+        ]);
+        $response = $this->actingAs($admin)->get(route('admin.dashboard'));
+        $response->assertOk();
+        $response->assertSee('Admin Test Sol');
+
+        // 4. Admin redirected from other dashboards to admin dashboard
+        $this->actingAs($admin)->get(route('dashboard'))->assertRedirect(route('admin.dashboard'));
+        $this->actingAs($admin)->get(route('atendente.dashboard'))->assertRedirect(route('admin.dashboard'));
+
+        // 5. Admin can access other admin pages, while agent and client cannot
+        $adminPages = [
+            'admin.gestao-atendimento',
+            'admin.presets-globais',
+            'admin.log-atividades'
+        ];
+
+        foreach ($adminPages as $page) {
+            $this->actingAs($admin)->get(route($page))->assertOk();
+            $this->actingAs($client)->get(route($page))->assertRedirect(route('dashboard'));
+            $this->actingAs($agent)->get(route($page))->assertRedirect(route('atendente.dashboard'));
+        }
+    }
 }

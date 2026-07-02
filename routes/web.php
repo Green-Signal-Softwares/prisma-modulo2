@@ -25,8 +25,6 @@ Route::middleware(['auth'])->group(function () {
 
 // Rotas Protegidas (Requer login)
 Route::middleware(['auth'])->group(function () {
-    // Gestão de Usuários
-    Route::resource('users', UserController::class)->only(['index', 'create', 'store', 'destroy']);
 
     // Gestão de Notificações
     Route::get('/notifications', [DashboardController::class, 'getNotifications'])->name('notifications.index');
@@ -58,8 +56,48 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/messages/{id?}', [ChatController::class, 'index'])->name('chat.index');
         Route::get('/tickets', [DashboardController::class, 'tickets'])->name('tickets');
+        Route::get('/tickets/{solicitation}', [DashboardController::class, 'showTicket'])->name('tickets.show');
         Route::get('/historico', [DashboardController::class, 'historico'])->name('historico');
         Route::post('/solicitations/{solicitation}/iniciar', [DashboardController::class, 'iniciarAtendimento'])->name('solicitations.iniciar');
         Route::post('/solicitations/{solicitation}/finalizar', [DashboardController::class, 'finalizarAtendimento'])->name('solicitations.finalizar');
     });
+
+    Route::middleware(['role:admin'])->group(function () {
+        Route::get('/gestao-usuarios', [DashboardController::class, 'gestaoUsuarios'])->name('users.index');
+    });
+
+    // Rotas de Admin (Apenas role: admin)
+    Route::middleware(['role:admin'])->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'adminDashboard'])->name('dashboard');
+        Route::get('/messages/{id?}', [ChatController::class, 'index'])->name('chat.index');
+        Route::get('/tickets', [DashboardController::class, 'tickets'])->name('tickets');
+        Route::get('/tickets/{solicitation}', [DashboardController::class, 'showTicket'])->name('tickets.show');
+        Route::get('/historico', [DashboardController::class, 'historico'])->name('historico');
+        Route::get('/gestao-atendimento', [DashboardController::class, 'gestaoAtendimento'])->name('gestao-atendimento');
+        Route::get('/presets-globais', [DashboardController::class, 'presetsGlobais'])->name('presets-globais');
+        Route::get('/log-atividades', [DashboardController::class, 'logAtividades'])->name('log-atividades');
+
+        Route::post('/presets', [DashboardController::class, 'storePreset'])->name('presets.store');
+        Route::put('/presets/{preset}', [DashboardController::class, 'updatePreset'])->name('presets.update');
+        Route::delete('/presets/{preset}', [DashboardController::class, 'destroyPreset'])->name('presets.destroy');
+
+        Route::post('/tags', [DashboardController::class, 'storeTag'])->name('tags.store');
+        Route::put('/tags/{tag}', [DashboardController::class, 'updateTag'])->name('tags.update');
+        Route::delete('/tags/{tag}', [DashboardController::class, 'destroyTag'])->name('tags.destroy');
+
+        Route::post('/access-profiles', [DashboardController::class, 'storeAccessProfile'])->name('access-profiles.store');
+        Route::put('/access-profiles/{profile}', [DashboardController::class, 'updateAccessProfile'])->name('access-profiles.update');
+        Route::put('/access-profiles/{profile}/toggle', [DashboardController::class, 'toggleAccessProfile'])->name('access-profiles.toggle');
+        Route::delete('/access-profiles/{profile}', [DashboardController::class, 'destroyAccessProfile'])->name('access-profiles.destroy');
+
+        Route::post('/users', [DashboardController::class, 'storeUser'])->name('users.store');
+        Route::put('/users/{user}', [DashboardController::class, 'updateUser'])->name('users.update');
+        Route::delete('/users/{user}', [DashboardController::class, 'destroyUser'])->name('users.destroy');
+    });
+
+    // Presets e Tags compartilhados / chat API
+    Route::post('/chat/presets', [DashboardController::class, 'storeChatPreset'])->name('chat.presets.store');
+    Route::put('/chat/presets/{preset}', [DashboardController::class, 'updateChatPreset'])->name('chat.presets.update');
+    Route::delete('/chat/presets/{preset}', [DashboardController::class, 'destroyChatPreset'])->name('chat.presets.destroy');
+    Route::post('/chat/solicitations/{solicitation}/tag', [DashboardController::class, 'updateSolicitationTag'])->name('chat.solicitations.tag');
 });

@@ -10,7 +10,7 @@ use App\Models\Message;
 class VideoCallController extends Controller
 {
     /**
-     * Cria espaço no Google Meet usando a conta de serviço e redireciona de volta para o chat.
+     * Inicia videochamada com Jitsi como principal e Google Meet como fallback.
      */
     public function redirectToGoogle(Request $request)
     {
@@ -31,20 +31,15 @@ class VideoCallController extends Controller
             return redirect($route)->with("error", "Não é possível iniciar chamada de vídeo antes do atendimento ser iniciado pelo atendente.");
         }
 
-        // Tenta criar o espaço via Service Account
-        $meetUrl = null;
-        $roomId = null;
-        
+        // Jitsi é o principal.
+        $roomId = "prisma-" . $solicitationId . "-" . substr(md5(time()), 0, 8);
+        $meetUrl = "https://meet.jit.si/" . $roomId;
+
+        // Google Meet é fallback quando disponível.
+        $fallbackMeetUrl = null;
         $spaceData = $this->createGoogleMeetSpace();
         if ($spaceData) {
-            $meetUrl = $spaceData['meetingUri'] ?? null;
-            $roomId = $spaceData['name'] ?? null;
-        }
-
-        // Se falhar (por ex: falta de configuração), usa o fallback do Jitsi Meet
-        if (!$meetUrl) {
-            $roomId = "prisma-" . $solicitationId . "-" . substr(md5(time()), 0, 8);
-            $meetUrl = "https://meet.jit.si/" . $roomId;
+            $fallbackMeetUrl = $spaceData['meetingUri'] ?? null;
         }
 
         // Cria mensagem especial de videochamada no chat
@@ -54,8 +49,9 @@ class VideoCallController extends Controller
             "text" => null,
             "type" => "videocall",
             "metadata" => [
-                "room_id" => $roomId ?: "prisma-" . $solicitationId,
+                "room_id" => $roomId,
                 "meet_url" => $meetUrl,
+                "fallback_meet_url" => $fallbackMeetUrl,
                 "initiated_by" => auth()->user()->name,
                 "initiated_by_role" => auth()->user()->role,
                 "status" => "active", // active ou ended
@@ -76,7 +72,7 @@ class VideoCallController extends Controller
     }
 
     /**
-     * Ingressa na chamada de vídeo redirecionando diretamente para o Meet sem exigir login do Google.
+     * Ingressa na chamada: Jitsi por padrão, com fallback opcional para Google Meet.
      */
     public function joinCall(Request $request, Message $message)
     {
@@ -86,8 +82,11 @@ class VideoCallController extends Controller
 
         $metadata = $message->metadata;
         $meetUrl = $metadata['meet_url'] ?? null;
+        $fallbackMeetUrl = $metadata['fallback_meet_url'] ?? null;
+        $useFallback = $request->boolean('fallback');
+        $targetUrl = $useFallback && $fallbackMeetUrl ? $fallbackMeetUrl : $meetUrl;
 
-        if (!$meetUrl) {
+        if (!$targetUrl) {
             return redirect()->back()->with('error', 'URL da reunião não encontrada.');
         }
 
@@ -100,7 +99,7 @@ class VideoCallController extends Controller
             return redirect()->back()->with('error', 'Não é possível acessar a chamada de vídeo antes do atendimento ser iniciado pelo atendente.');
         }
 
-        return redirect($meetUrl);
+        return redirect($targetUrl);
     }
 
     /**
@@ -214,6 +213,12 @@ class VideoCallController extends Controller
 
         $roomId = "prisma-" . $solicitationId . "-" . substr(md5(time() . auth()->id()), 0, 8);
         $meetUrl = "https://meet.jit.si/" . $roomId;
+        $fallbackMeetUrl = null;
+
+        $spaceData = $this->createGoogleMeetSpace();
+        if ($spaceData) {
+            $fallbackMeetUrl = $spaceData['meetingUri'] ?? null;
+        }
 
         $message = Message::create([
             "solicitation_id" => $solicitationId,
@@ -223,6 +228,7 @@ class VideoCallController extends Controller
             "metadata" => [
                 "room_id" => $roomId,
                 "meet_url" => $meetUrl,
+                "fallback_meet_url" => $fallbackMeetUrl,
                 "initiated_by" => auth()->user()->name,
                 "initiated_by_role" => auth()->user()->role,
                 "status" => "active",
@@ -236,6 +242,7 @@ class VideoCallController extends Controller
         return response()->json([
             "success" => true,
             "meet_url" => $meetUrl,
+            "join_url" => route('videocall.join', $message),
             "message" => [
                 "id" => $message->id,
                 "type" => "videocall",

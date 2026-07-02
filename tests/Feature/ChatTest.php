@@ -332,5 +332,24 @@ class ChatTest extends TestCase
             'sender' => 'SISTEMA'
         ]);
     }
+
+    public function test_agent_can_view_ticket_show_page()
+    {
+        $response = $this->actingAs($this->agent)
+            ->get(route('atendente.tickets.show', $this->solicitation));
+
+        $response->assertStatus(200);
+        $response->assertSee('Ticket #' . $this->solicitation->ticket_number);
+        $response->assertSee('Histórico completo');
+        $response->assertSee('Central de mensagens');
+    }
+
+    public function test_user_cannot_view_ticket_show_page()
+    {
+        $response = $this->actingAs($this->user)
+            ->get(route('atendente.tickets.show', $this->solicitation));
+
+        $response->assertStatus(302); // redirected by role middleware
+    }
 }
 

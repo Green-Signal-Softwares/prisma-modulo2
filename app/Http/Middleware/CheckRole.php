@@ -25,6 +25,9 @@ class CheckRole
         $user = auth()->user();
 
         if (!in_array($user->role, $roles)) {
+            if ($user->role === 'admin') {
+                return redirect()->route('admin.dashboard');
+            }
             if ($user->role === 'atendente') {
                 return redirect()->route('atendente.dashboard');
             }

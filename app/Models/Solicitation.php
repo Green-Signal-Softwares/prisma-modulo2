@@ -6,10 +6,15 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['user_id', 'atendente_id', 'title', 'description', 'status', 'ticket_number', 'file_path'])]
+#[Fillable(['user_id', 'atendente_id', 'tag_id', 'title', 'description', 'status', 'ticket_number', 'file_path'])]
 class Solicitation extends Model
 {
     use HasFactory;
+
+    public function tag()
+    {
+        return $this->belongsTo(Tag::class);
+    }
 
     protected $casts = [
         'file_path' => 'array',

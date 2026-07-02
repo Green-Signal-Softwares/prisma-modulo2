@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Solicitation;
 use App\Models\Message;
+use App\Models\Preset;
+use App\Models\Tag;
 use App\Notifications\SolicitationNotification;
 use Illuminate\Http\Request;
 
@@ -14,7 +16,7 @@ class ChatController extends Controller
      */
     public function index($id = null)
     {
-        if (auth()->user()->role === 'atendente') {
+        if (in_array(auth()->user()->role, ['atendente', 'admin'])) {
             $solicitations = Solicitation::withCount(['messages as unread_messages_count' => function ($query) {
                 $query->where('user_id', '!=', auth()->id())->whereNull('read_at');
             }])->orderBy('created_at', 'desc')->get();
@@ -36,7 +38,7 @@ class ChatController extends Controller
 
         if ($activeSolicitation) {
             // Carrega mensagens e atendente do banco de dados
-            $activeSolicitation->load(['messages.user', 'messages.parent.user', 'atendente', 'evaluations']);
+            $activeSolicitation->load(['messages.user', 'messages.parent.user', 'atendente', 'evaluations', 'tag']);
             
             // Marca mensagens do outro participante como lidas
             $activeSolicitation->messages()
@@ -47,13 +49,38 @@ class ChatController extends Controller
 
         // Calcula posição na fila (apenas para cliente)
         $queuePosition = null;
-        if ($activeSolicitation && $activeSolicitation->status === 'na_fila' && auth()->user()->role !== 'atendente') {
+        if ($activeSolicitation && $activeSolicitation->status === 'na_fila' && !in_array(auth()->user()->role, ['atendente', 'admin'])) {
             $queuePosition = Solicitation::where('status', 'na_fila')
                 ->where('created_at', '<=', $activeSolicitation->created_at)
                 ->count();
         }
 
-        return view('chat.index', compact('solicitations', 'activeSolicitation', 'queuePosition'));
+        // Carrega Presets e Tags para exibição
+        $tags = Tag::orderBy('name', 'asc')->get();
+        $presets = collect();
+        if (in_array(auth()->user()->role, ['atendente', 'admin'])) {
+            $globalPresets = Preset::whereNull('user_id')->orderBy('created_at', 'desc')->get();
+            $userOverrides = Preset::where('user_id', auth()->id())->get()->keyBy('parent_id');
+            
+            $presets = $globalPresets->map(function ($preset) use ($userOverrides) {
+                $overridden = $preset->replicate();
+                $overridden->id = $preset->id;
+                if (isset($userOverrides[$preset->id])) {
+                    $overridden->text = $userOverrides[$preset->id]->text;
+                    $overridden->is_customized = true;
+                    $overridden->customized_id = $userOverrides[$preset->id]->id;
+                } else {
+                    $overridden->is_customized = false;
+                    $overridden->customized_id = null;
+                }
+                return $overridden;
+            });
+
+            $personalPresets = Preset::where('user_id', auth()->id())->whereNull('parent_id')->get();
+            $presets = $presets->concat($personalPresets);
+        }
+
+        return view('chat.index', compact('solicitations', 'activeSolicitation', 'queuePosition', 'presets', 'tags'));
     }
 
     /**
@@ -95,8 +122,8 @@ class ChatController extends Controller
             'reactions' => [],
         ]);
 
-        // Se atendente responder chamado em atendimento, atualiza para 'em_replica'
-        if (auth()->user()->role === 'atendente' && in_array($solicitation->status, ['aberta', 'nova', 'em_atendimento'])) {
+        // Se atendente/admin responder chamado em atendimento, atualiza para 'em_replica'
+        if (in_array(auth()->user()->role, ['atendente', 'admin']) && in_array($solicitation->status, ['aberta', 'nova', 'em_atendimento'])) {
             $solicitation->update(['status' => 'em_replica']);
         }
 
@@ -110,11 +137,12 @@ class ChatController extends Controller
                     $solicitation->id,
                     'resposta'
                 ));
-            } elseif (auth()->user()->role === 'atendente' && $solicitation->user) {
-                // Atendente envia, notifica o cliente
+            } elseif (in_array(auth()->user()->role, ['atendente', 'admin']) && $solicitation->user) {
+                // Atendente/Admin envia, notifica o cliente
+                $senderName = auth()->user()->role === 'admin' ? 'Administrador' : 'O atendente ' . auth()->user()->name;
                 $solicitation->user->notify(new SolicitationNotification(
                     'Nova mensagem recebida',
-                    'O atendente ' . auth()->user()->name . ' respondeu no chamado #' . $solicitation->ticket_number . '.',
+                    $senderName . ' respondeu no chamado #' . $solicitation->ticket_number . '.',
                     $solicitation->id,
                     'resposta'
                 ));

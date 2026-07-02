@@ -260,8 +260,8 @@
                                     $assunto = $solicitation->title;
                                 }
                             @endphp
-                            <!-- Linha de Registro Clicável para abrir o chat -->
-                            <tr class="hover:bg-[#F8F9FA]/80 transition-colors cursor-pointer" onclick="goToChat(event, '{{ route('atendente.chat.index', $solicitation->id) }}')">
+                            <!-- Linha de Registro Clicável para abrir a visualização do ticket -->
+                            <tr class="hover:bg-[#F8F9FA]/80 transition-colors cursor-pointer" onclick="goToChat(event, '{{ route('atendente.tickets.show', $solicitation->id) }}')">
                                 
                                 <!-- ID com botão de copiar -->
                                 <td class="py-4 px-4 font-bold text-gray-900 text-center">

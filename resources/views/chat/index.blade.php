@@ -1026,7 +1026,13 @@
                                     $initiatedBy = strtoupper($meta['initiated_by'] ?? $msg->user->name);
                                     $isEnded = ($meta['status'] ?? '') === 'ended';
                                 @endphp
-                                <div class="flex justify-center chat-message" data-message-id="{{ $msg->id }}">
+                                <div
+                                    class="flex justify-center chat-message"
+                                    data-message-id="{{ $msg->id }}"
+                                    data-videocall-active="{{ $isEnded ? '0' : '1' }}"
+                                    data-videocall-meet-url="{{ $meetUrl }}"
+                                    data-videocall-is-user="{{ $isCurrentUser ? '1' : '0' }}"
+                                >
                                     <div class="videocall-card {{ $isEnded ? 'ended' : '' }}">
                                         <div class="videocall-card-icon">
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-6 h-6">
@@ -1040,12 +1046,16 @@
                                             por {{ $initiatedBy }} &bull; {{ $msg->created_at->format('d/m - H:i') }}
                                         </div>
                                         @if(!$isEnded)
-                                            <a href="{{ route('videocall.join', $msg->id) }}" target="_blank" class="videocall-join-btn">
+                                            <button
+                                                type="button"
+                                                class="videocall-join-btn"
+                                                onclick="joinVideoCall({{ \Illuminate\Support\Js::from($meetUrl) }}, {{ \Illuminate\Support\Js::from(route('videocall.join', $msg->id)) }})"
+                                            >
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-4 h-4">
                                                     <path d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z"/>
                                                 </svg>
                                                 Entrar na Reunião
-                                            </a>
+                                            </button>
                                             
                                             {{-- Apenas o atendente ou o criador da chamada pode encerrar --}}
                                             @if(auth()->user()->role === 'atendente' || $isCurrentUser)
@@ -1342,7 +1352,7 @@
                             type="submit" 
                             class="w-8 h-8 rounded-full bg-[#DA291C] hover:bg-[#B31D14] text-white flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95 focus:outline-none"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor" class="w-4 h-4 transform rotate-45 -translate-x-0.5 -translate-y-0.2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor" class="w-4 h-4 transform -rotate-45 translate-x-px -translate-y-px">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
                             </svg>
                         </button>
@@ -1836,9 +1846,26 @@
         <div style="font-size:11px;font-weight:800;letter-spacing:0.05em;color:rgba(255,255,255,0.6);text-transform:uppercase;">Videochamada Ativa</div>
         <div style="font-size:13px;font-weight:700;">Sala criada com sucesso!</div>
     </div>
-    <a href="#" target="_blank" class="vc-toast-link" style="background:linear-gradient(90deg,#DA291C,#ff6b5b);color:#fff;font-size:11px;font-weight:800;padding:6px 14px;border-radius:20px;text-decoration:none;white-space:nowrap;flex-shrink:0;">
+    <button type="button" class="vc-toast-link" style="background:linear-gradient(90deg,#DA291C,#ff6b5b);color:#fff;font-size:11px;font-weight:800;padding:6px 14px;border-radius:20px;text-decoration:none;white-space:nowrap;flex-shrink:0;cursor:pointer;">
         Entrar agora
-    </a>
+    </button>
+</div>
+
+<!-- Modal de Videochamada (Jitsi embutido) -->
+<div id="jitsi-modal" class="fixed inset-0 z-[120] hidden bg-black/80 backdrop-blur-sm p-2 sm:p-4">
+    <div id="jitsi-modal-content" class="relative w-full h-full rounded-2xl bg-[#111827] border border-white/10 shadow-2xl overflow-hidden">
+        <button
+            type="button"
+            onclick="closeJitsiModal()"
+            class="absolute top-3 right-3 z-10 bg-black/55 hover:bg-black/75 text-white rounded-full p-2 transition-colors"
+            title="Fechar chamada"
+        >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+        <div id="jitsi-container" class="w-full h-full"></div>
+    </div>
 </div>
 
 <!-- Modal de Visualização de Imagem (Lightbox) -->
@@ -1864,6 +1891,7 @@
 @endsection
 
 @section('scripts')
+<script src="https://meet.jit.si/external_api.js"></script>
 <script>
     // Global chat state variables
     let currentMessageId = null;
@@ -1878,6 +1906,9 @@
     const activeSolicitationUserName = {{ \Illuminate\Support\Js::from($activeSolicitation?->user?->name ?? 'Cliente') }};
     const activeSolicitationTicket = {{ \Illuminate\Support\Js::from($activeSolicitation?->ticket_number ?? '') }};
     const activeSolicitationId = {{ \Illuminate\Support\Js::from($activeSolicitation?->id) }};
+    const currentUserDisplayName = {{ \Illuminate\Support\Js::from(auth()->user()->name ?? 'Usuário') }};
+    const currentUserEmail = {{ \Illuminate\Support\Js::from(auth()->user()->email ?? '') }};
+    const AUTO_JOIN_STORAGE_KEY = 'prisma_auto_joined_videocalls_v1';
     let solicitationEvaluationSent = {{ \Illuminate\Support\Js::from(isset($existingClientEvaluation) && $existingClientEvaluation !== null) }};
     const TAG_STORE_KEY = 'prisma_chat_tags_v1';
     const TAG_COLORS = [
@@ -1888,8 +1919,20 @@
     const QUICK_REPLIES_STORE_KEY = 'prisma_quick_replies_v1';
     let selectedTagColor = TAG_COLORS[0];
     let editingTagId = null;
-    let quickRepliesDraft = [];
+    
+    // Database-backed presets and tags
+    const INITIAL_PRESETS = @json($presets ?? []);
+    let quickRepliesList = INITIAL_PRESETS.map(preset => ({
+        id: preset.id,
+        name: preset.shortcut,
+        text: preset.text,
+        user_id: preset.user_id,
+        parent_id: preset.parent_id
+    }));
+    let quickRepliesDraft = [...quickRepliesList];
     let quickReplyModalEditIndex = null;
+    const tagsList = @json($tags ?? []);
+    let activeTicketTagId = @json($activeSolicitation ? $activeSolicitation->tag_id : null);
     let checklistState = {
         problema: null,
         solucao: null,
@@ -1901,6 +1944,16 @@
         problemaResolvido: null,
         comentario: ''
     };
+    let jitsiApi = null;
+    let autoJoinedVideoCalls = new Set();
+    try {
+        const storedAutoJoin = JSON.parse(sessionStorage.getItem(AUTO_JOIN_STORAGE_KEY) || '[]');
+        if (Array.isArray(storedAutoJoin)) {
+            autoJoinedVideoCalls = new Set(storedAutoJoin.map(id => String(id)));
+        }
+    } catch (error) {
+        autoJoinedVideoCalls = new Set();
+    }
 
     // Chat internal message search functionality
     function toggleChatSearch() {
@@ -2048,42 +2101,25 @@
 
     function getDefaultTagStore() {
         return {
-            tags: [
-                { id: 'tag_1', name: 'Tag 1', color: '#EC4899' },
-                { id: 'tag_2', name: 'Tag 2', color: '#EF4444' },
-                { id: 'tag_3', name: 'Tag 3', color: '#84CC16' },
-                { id: 'tag_4', name: 'Tag 4', color: '#06B6D4' },
-                { id: 'tag_5', name: 'Tag 5', color: '#3B82F6' },
-                { id: 'tag_6', name: 'Tag 6', color: '#F97316' }
-            ],
+            tags: tagsList,
             ticketTags: {}
         };
     }
 
     function getTagStore() {
-        try {
-            const raw = localStorage.getItem(TAG_STORE_KEY);
-            if (!raw) return getDefaultTagStore();
-            const parsed = JSON.parse(raw);
-            return {
-                tags: Array.isArray(parsed.tags) ? parsed.tags : getDefaultTagStore().tags,
-                ticketTags: parsed.ticketTags && typeof parsed.ticketTags === 'object' ? parsed.ticketTags : {}
-            };
-        } catch (error) {
-            console.error(error);
-            return getDefaultTagStore();
-        }
+        return {
+            tags: tagsList,
+            ticketTags: {}
+        };
     }
 
     function saveTagStore(store) {
-        localStorage.setItem(TAG_STORE_KEY, JSON.stringify(store));
+        // No-op
     }
 
     function getCurrentTicketTag() {
-        if (!activeSolicitationId) return null;
-        const store = getTagStore();
-        const selectedTagId = store.ticketTags[String(activeSolicitationId)];
-        return store.tags.find(tag => tag.id === selectedTagId) || null;
+        if (!activeSolicitationId || !activeTicketTagId) return null;
+        return tagsList.find(tag => tag.id === activeTicketTagId) || null;
     }
 
     function renderCurrentTagBadge() {
@@ -2106,11 +2142,10 @@
         const list = document.getElementById('ticket-tag-list');
         if (!list || !isAtendenteUser) return;
 
-        const store = getTagStore();
         const currentTag = getCurrentTicketTag();
         list.innerHTML = '';
 
-        store.tags.forEach(tag => {
+        tagsList.forEach(tag => {
             const row = document.createElement('button');
             row.type = 'button';
             row.className = `w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg transition-colors ${currentTag && currentTag.id === tag.id ? 'bg-white/12' : 'hover:bg-white/10'}`;
@@ -2129,25 +2164,7 @@
             left.appendChild(dot);
             left.appendChild(name);
 
-            const actions = document.createElement('div');
-            actions.className = 'flex items-center gap-1';
-
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'p-1 rounded hover:bg-white/10 transition-colors';
-            editBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor" class="w-4 h-4 text-white/85">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
-                </svg>
-            `;
-            editBtn.onclick = (event) => {
-                event.stopPropagation();
-                openTagEditorModal(tag.id);
-            };
-
-            actions.appendChild(editBtn);
             row.appendChild(left);
-            row.appendChild(actions);
             list.appendChild(row);
         });
     }
@@ -2155,22 +2172,35 @@
     function selectTagForTicket(tagId) {
         if (!activeSolicitationId) return;
 
-        const store = getTagStore();
-        const ticketKey = String(activeSolicitationId);
-        const alreadySelected = store.ticketTags[ticketKey] === tagId;
+        const alreadySelected = activeTicketTagId === tagId;
+        const newTagId = alreadySelected ? null : tagId;
 
-        if (alreadySelected) {
-            delete store.ticketTags[ticketKey];
-            showToast('Etiqueta removida deste chamado.');
-        } else {
-            store.ticketTags[ticketKey] = tagId;
-            showToast('Etiqueta atualizada.');
-        }
-
-        saveTagStore(store);
-        renderTagMenu();
-        renderCurrentTagBadge();
-        closeAllMenus();
+        fetch(`/chat/solicitations/${activeSolicitationId}/tag`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                tag_id: newTagId
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                activeTicketTagId = newTagId;
+                renderTagMenu();
+                renderCurrentTagBadge();
+                showToast(alreadySelected ? 'Etiqueta removida deste chamado.' : 'Etiqueta atualizada.');
+                closeAllMenus();
+            } else {
+                showToast('Erro ao atualizar etiqueta.');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Erro ao salvar etiqueta.');
+        });
     }
 
     function toggleTagMenu(event) {
@@ -2292,50 +2322,25 @@
     }
 
     function getDefaultQuickReplies() {
-        return [
-            { name: 'Mensagem inicial', text: 'Olá, me nome é Gabriel e eu iniciarei seu atendimento.' },
-            { name: 'Mensagem inicial', text: 'Um momento enquanto eu analiso as informações - qualquer dúvida é só me chamar, me mantenho à disposição.' },
-            { name: 'Mensagem inicial', text: 'Perfeito, já identifiquei sua solicitação e vou seguir com as próximas validações.' }
-        ];
+        return quickRepliesList;
     }
 
     function normalizeQuickReply(item) {
-        if (typeof item === 'string') {
-            return {
-                name: 'Mensagem inicial',
-                text: item
-            };
-        }
-
         return {
+            id: item.id || null,
             name: (item && item.name ? String(item.name) : 'Mensagem inicial').trim() || 'Mensagem inicial',
-            text: (item && item.text ? String(item.text) : '').trim()
+            text: (item && item.text ? String(item.text) : '').trim(),
+            user_id: item.user_id || null,
+            parent_id: item.parent_id || null
         };
     }
 
     function getQuickReplies() {
-        try {
-            const raw = localStorage.getItem(QUICK_REPLIES_STORE_KEY);
-            if (!raw) return getDefaultQuickReplies();
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed)) return getDefaultQuickReplies();
-
-            const normalized = parsed
-                .map(normalizeQuickReply)
-                .filter(item => item.text.length > 0);
-
-            return normalized.length > 0 ? normalized : getDefaultQuickReplies();
-        } catch (error) {
-            console.error(error);
-            return getDefaultQuickReplies();
-        }
+        return quickRepliesList;
     }
 
     function saveQuickReplies(list) {
-        const cleaned = (Array.isArray(list) ? list : [])
-            .map(normalizeQuickReply)
-            .filter(item => item.text.length > 0);
-        localStorage.setItem(QUICK_REPLIES_STORE_KEY, JSON.stringify(cleaned));
+        // No-op - DB synchronization is handled by Ajax
     }
 
     function formatQuickReplyName(name) {
@@ -2517,17 +2522,53 @@
 
     function removeQuickReplyItem(index, filter = '') {
         if (!isAtendenteUser) return;
-        quickRepliesDraft.splice(index, 1);
-        if (quickReplyModalEditIndex === index) {
-            quickReplyModalEditIndex = null;
-        } else if (quickReplyModalEditIndex !== null && quickReplyModalEditIndex > index) {
-            quickReplyModalEditIndex -= 1;
-        }
-        saveQuickReplies(quickRepliesDraft);
-        quickRepliesDraft = [...getQuickReplies()];
-        renderQuickRepliesMenu();
-        renderQuickRepliesEditor(filter);
-        showToast('Resposta rápida removida.');
+        if (!confirm('Deseja realmente remover esta resposta rápida?')) return;
+
+        const current = quickRepliesDraft[index];
+        if (!current) return;
+
+        fetch(`/chat/presets/${current.id}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const realIndex = quickRepliesList.findIndex(item => item.id === current.id);
+                if (realIndex !== -1) {
+                    if (current.parent_id) {
+                        const globalOriginal = INITIAL_PRESETS.find(item => item.id === current.parent_id);
+                        if (globalOriginal) {
+                            quickRepliesList[realIndex] = {
+                                id: globalOriginal.id,
+                                name: globalOriginal.shortcut,
+                                text: globalOriginal.text,
+                                user_id: null,
+                                parent_id: null
+                            };
+                            showToast('Resposta personalizada removida. Restaurado para o padrão global.');
+                        } else {
+                            quickRepliesList.splice(realIndex, 1);
+                            showToast('Resposta rápida removida.');
+                        }
+                    } else {
+                        quickRepliesList.splice(realIndex, 1);
+                        showToast('Resposta rápida removida.');
+                    }
+                }
+                quickRepliesDraft = [...quickRepliesList];
+                renderQuickRepliesMenu();
+                renderQuickRepliesEditor(filter);
+            } else {
+                showToast('Erro ao remover.');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Erro de conexão ao remover.');
+        });
     }
 
     function openQuickReplyAddModal() {
@@ -2579,15 +2620,40 @@
             return;
         }
 
-        const list = getQuickReplies();
-        list.push({ name, text });
-        saveQuickReplies(list);
-        quickRepliesDraft = [...getQuickReplies()];
-
-        renderQuickRepliesMenu();
-        renderQuickRepliesEditor();
-        closeQuickReplyAddModal();
-        showToast('Resposta rápida adicionada.');
+        fetch("{{ route('chat.presets.store') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                shortcut: name,
+                text: text
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                quickRepliesList.push({
+                    id: data.preset.id,
+                    name: data.preset.shortcut,
+                    text: data.preset.text,
+                    user_id: data.preset.user_id,
+                    parent_id: data.preset.parent_id
+                });
+                quickRepliesDraft = [...quickRepliesList];
+                renderQuickRepliesMenu();
+                renderQuickRepliesEditor();
+                closeQuickReplyAddModal();
+                showToast('Resposta rápida adicionada.');
+            } else {
+                showToast('Erro ao salvar resposta rápida.');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Erro de conexão ao salvar.');
+        });
     }
 
     function openQuickReplyEditModal(index) {
@@ -2643,17 +2709,44 @@
             return;
         }
 
-        const list = getQuickReplies();
-        if (!list[quickReplyModalEditIndex]) return;
+        const current = quickRepliesDraft[quickReplyModalEditIndex];
+        if (!current) return;
 
-        list[quickReplyModalEditIndex] = { name, text };
-        saveQuickReplies(list);
-        quickRepliesDraft = [...getQuickReplies()];
-
-        renderQuickRepliesMenu();
-        renderQuickRepliesEditor();
-        closeQuickReplyEditModal();
-        showToast('Resposta rápida atualizada.');
+        fetch(`/chat/presets/${current.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                shortcut: name,
+                text: text
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                current.name = data.preset.shortcut;
+                current.text = data.preset.text;
+                if (data.preset.parent_id) {
+                    current.id = data.preset.id;
+                    current.user_id = data.preset.user_id;
+                    current.parent_id = data.preset.parent_id;
+                }
+                
+                quickRepliesDraft[quickReplyModalEditIndex] = current;
+                renderQuickRepliesMenu();
+                renderQuickRepliesEditor();
+                closeQuickReplyEditModal();
+                showToast('Alterações salvas com sucesso.');
+            } else {
+                showToast('Erro ao atualizar.');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Erro de conexão ao salvar.');
+        });
     }
 
     function initQuickReplies() {
@@ -3100,6 +3193,7 @@
         initQuickReplies();
         initChecklistModal();
         initEvaluationModal();
+        autoJoinExistingClientVideoCalls();
 
         const tagModal = document.getElementById('tag-editor-modal');
         if (tagModal) {
@@ -3124,6 +3218,15 @@
             quickReplyEditModal.addEventListener('click', function(event) {
                 if (event.target === quickReplyEditModal) {
                     closeQuickReplyEditModal();
+                }
+            });
+        }
+
+        const jitsiModal = document.getElementById('jitsi-modal');
+        if (jitsiModal) {
+            jitsiModal.addEventListener('click', function(event) {
+                if (event.target === jitsiModal) {
+                    closeJitsiModal();
                 }
             });
         }
@@ -3182,6 +3285,15 @@
         const isClickInsideQuickRepliesMenu = quickRepliesMenu && quickRepliesMenu.contains(e.target);
         if (!isClickInsideMenu && !isClickInsideEmoji && !isClickInsideInputEmoji && !isClickInsideTagMenu && !isClickInsideQuickRepliesMenu) {
             closeAllMenus();
+        }
+    });
+
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const jitsiModal = document.getElementById('jitsi-modal');
+            if (jitsiModal && !jitsiModal.classList.contains('hidden')) {
+                closeJitsiModal();
+            }
         }
     });
 
@@ -3839,9 +3951,11 @@
         if (existingMsgEl) {
             // Se for do tipo videocall, re-renderiza o HTML interno dele se o status mudou
             if (msg.type === 'videocall' && msg.metadata) {
+                maybeAutoJoinClientVideoCall(msg);
                 const card = existingMsgEl.querySelector('.videocall-card');
                 const isEnded = msg.metadata.status === 'ended';
                 if (card && isEnded && !card.classList.contains('ended')) {
+                    existingMsgEl.setAttribute('data-videocall-active', '0');
                     const meta = msg.metadata;
                     const initiatedBy = (meta.initiated_by || msg.sender || 'Sistema').toUpperCase();
                     const endedAtStr = meta.ended_at ? new Date(meta.ended_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
@@ -3898,8 +4012,12 @@
             const meetUrl = meta.meet_url || '#';
             const initiatedBy = (meta.initiated_by || msg.sender || 'Sistema').toUpperCase();
             const isEnded = meta.status === 'ended';
+            const isCurrentUser = !!msg.is_user;
             
             wrapper.className = 'flex justify-center animate-fade-in chat-message';
+            wrapper.setAttribute('data-videocall-active', isEnded ? '0' : '1');
+            wrapper.setAttribute('data-videocall-meet-url', meetUrl);
+            wrapper.setAttribute('data-videocall-is-user', isCurrentUser ? '1' : '0');
             
             if (isEnded) {
                 const endedAtStr = meta.ended_at ? new Date(meta.ended_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
@@ -3918,7 +4036,6 @@
                     </div>
                 `;
             } else {
-                const isCurrentUser = msg.is_user;
                 const endButtonHtml = (isAtendenteUser || isCurrentUser)
                     ? `<button type="button" onclick="endVideoCall(${msg.id})" class="videocall-end-btn">Encerrar chamada</button>`
                     : '';
@@ -3932,12 +4049,12 @@
                         </div>
                         <div class="videocall-card-title">Videochamada iniciada</div>
                         <div class="videocall-card-subtitle">por ${initiatedBy} &bull; ${msg.time || ''}</div>
-                        <a href="/videocall/${msg.id}/join" target="_blank" class="videocall-join-btn">
+                        <button type="button" onclick="joinVideoCall(${JSON.stringify(meetUrl)}, ${JSON.stringify(`/videocall/${msg.id}/join`)})" class="videocall-join-btn">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-4 h-4">
                                 <path d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z"/>
                             </svg>
                             Entrar na Reunião
-                        </a>
+                        </button>
                         ${endButtonHtml}
                     </div>
                 `;
@@ -3950,6 +4067,7 @@
             } else {
                 container.appendChild(wrapper);
             }
+            maybeAutoJoinClientVideoCall(msg);
             if (msg.id > lastMessageId) lastMessageId = msg.id;
             return;
         }
@@ -4106,16 +4224,194 @@
     // =========================================================
     // VIDEOCHAMADA: Initiate video call via API
     function initiateVideoCall(solicitationId) {
-        // Redireciona diretamente para o fluxo Google OAuth para criar espaço no Google Meet
-        window.location.href = `/google/redirect?solicitation_id=${solicitationId}`;
+        fetch('/videocall/initiate', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ solicitation_id: solicitationId })
+        })
+        .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Não foi possível iniciar videochamada.');
+            }
+            return data;
+        })
+        .then((data) => {
+            if (data.message) {
+                appendOrUpdateMessage(data.message);
+            }
+
+            if (data.meet_url) {
+                showVideoCallToast(data.meet_url, data.join_url || null);
+            }
+        })
+        .catch((error) => {
+            console.error(error);
+            showToast(error.message || 'Erro ao iniciar videochamada.');
+        });
     }
 
-    function showVideoCallToast(meetUrl) {
+    function showVideoCallToast(meetUrl, joinUrl = null) {
         let toast = document.getElementById('videocall-toast');
         if (!toast) return;
-        toast.querySelector('.vc-toast-link').href = meetUrl;
+        const enterBtn = toast.querySelector('.vc-toast-link');
+        if (enterBtn) {
+            enterBtn.onclick = () => joinVideoCall(meetUrl, joinUrl || meetUrl);
+        }
         toast.classList.add('show');
         setTimeout(() => toast.classList.remove('show'), 6000);
+    }
+
+    function isJitsiUrl(url) {
+        if (!url) return false;
+        try {
+            const parsed = new URL(url, window.location.origin);
+            return parsed.hostname.includes('meet.jit.si') || parsed.hostname.includes('jitsi');
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function joinVideoCall(meetUrl, fallbackUrl = null) {
+        if (isJitsiUrl(meetUrl)) {
+            openJitsiModal(meetUrl);
+            return;
+        }
+
+        const target = fallbackUrl || meetUrl;
+        if (target) {
+            window.open(target, '_blank', 'noopener,noreferrer');
+        }
+    }
+
+    function openJitsiModal(meetUrl) {
+        const modal = document.getElementById('jitsi-modal');
+        const container = document.getElementById('jitsi-container');
+        if (!modal || !container) return;
+
+        if (typeof window.JitsiMeetExternalAPI !== 'function') {
+            window.open(meetUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        let parsed;
+        try {
+            parsed = new URL(meetUrl, window.location.origin);
+        } catch (error) {
+            window.open(meetUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        const roomName = parsed.pathname.replace(/^\/+/, '').split('/')[0];
+        if (!roomName) {
+            window.open(meetUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        if (jitsiApi) {
+            jitsiApi.dispose();
+            jitsiApi = null;
+        }
+
+        container.innerHTML = '';
+        modal.classList.remove('hidden');
+
+        jitsiApi = new window.JitsiMeetExternalAPI(parsed.hostname, {
+            roomName,
+            parentNode: container,
+            userInfo: {
+                displayName: currentUserDisplayName,
+                email: currentUserEmail,
+            },
+            configOverwrite: {
+                prejoinPageEnabled: false,
+                prejoinConfig: {
+                    enabled: false,
+                },
+                disableProfile: true,
+                settingsSections: ['devices', 'language', 'sounds'],
+                disableDeepLinking: true,
+            },
+            interfaceConfigOverwrite: {
+                SHOW_JITSI_WATERMARK: false,
+                SHOW_WATERMARK_FOR_GUESTS: false,
+                SETTINGS_SECTIONS: ['devices', 'language', 'sounds'],
+            },
+        });
+
+        jitsiApi.addListener('videoConferenceLeft', () => {
+            closeJitsiModal();
+        });
+    }
+
+    function closeJitsiModal() {
+        const modal = document.getElementById('jitsi-modal');
+        const container = document.getElementById('jitsi-container');
+
+        if (jitsiApi) {
+            jitsiApi.dispose();
+            jitsiApi = null;
+        }
+
+        if (container) {
+            container.innerHTML = '';
+        }
+
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    function persistAutoJoinedVideoCalls() {
+        try {
+            sessionStorage.setItem(AUTO_JOIN_STORAGE_KEY, JSON.stringify(Array.from(autoJoinedVideoCalls)));
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function maybeAutoJoinClientVideoCall(msg) {
+        if (!isClienteUser || !msg || msg.type !== 'videocall' || !msg.metadata) return;
+        if (msg.metadata.status === 'ended') return;
+        if (msg.is_user) return;
+
+        const messageId = String(msg.id || '');
+        if (!messageId || autoJoinedVideoCalls.has(messageId)) return;
+
+        autoJoinedVideoCalls.add(messageId);
+        persistAutoJoinedVideoCalls();
+
+        setTimeout(() => {
+            // Cliente entra automaticamente no Jitsi sem precisar clicar em botao.
+            joinVideoCall(msg.metadata.meet_url, `/videocall/${messageId}/join`);
+        }, 200);
+    }
+
+    function autoJoinExistingClientVideoCalls() {
+        if (!isClienteUser) return;
+
+        const cards = document.querySelectorAll('[data-message-id][data-videocall-active="1"]');
+        cards.forEach((card) => {
+            const messageId = String(card.getAttribute('data-message-id') || '');
+            const meetUrl = card.getAttribute('data-videocall-meet-url') || '';
+            const isUser = card.getAttribute('data-videocall-is-user') === '1';
+
+            if (!messageId || !meetUrl || isUser) return;
+
+            maybeAutoJoinClientVideoCall({
+                id: messageId,
+                type: 'videocall',
+                is_user: false,
+                metadata: {
+                    status: 'active',
+                    meet_url: meetUrl,
+                },
+            });
+        });
     }
 
     function endVideoCall(messageId) {
