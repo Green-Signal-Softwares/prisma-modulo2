@@ -351,5 +351,103 @@ class ChatTest extends TestCase
 
         $response->assertStatus(302); // redirected by role middleware
     }
+
+    public function test_cannot_initiate_videocall_when_another_videocall_is_active()
+    {
+        // 1. Inicia uma chamada de vídeo primeiro
+        $firstCallMsg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->agent->id,
+            'text' => null,
+            'type' => 'videocall',
+            'metadata' => [
+                'room_id' => 'prisma-test-1',
+                'meet_url' => 'https://meet.jit.si/prisma-test-1',
+                'status' => 'active'
+            ]
+        ]);
+
+        // 2. Tenta iniciar outra chamada de vídeo por Jitsi (initiateCall)
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('videocall.initiate'), [
+                'solicitation_id' => $this->solicitation->id
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonFragment([
+            'error' => 'Não é possível iniciar uma nova chamada enquanto a chamada atual estiver ativa.'
+        ]);
+
+        // 3. Tenta iniciar outra chamada de vídeo por Google Meet redirect (redirectToGoogle)
+        $response2 = $this->actingAs($this->agent)
+            ->get(route('google.redirect', [
+                'solicitation_id' => $this->solicitation->id
+            ]));
+
+        $response2->assertStatus(302);
+        $response2->assertSessionHas('error', 'Não é possível iniciar uma nova chamada enquanto a chamada atual estiver ativa.');
+    }
+
+    public function test_can_initiate_videocall_when_all_previous_videocalls_ended()
+    {
+        // 1. Inicia uma chamada de vídeo anterior
+        $firstCallMsg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->agent->id,
+            'text' => null,
+            'type' => 'videocall',
+            'metadata' => [
+                'room_id' => 'prisma-test-1',
+                'meet_url' => 'https://meet.jit.si/prisma-test-1',
+                'status' => 'ended'
+            ]
+        ]);
+
+        // 2. Tenta iniciar nova chamada de vídeo por Jitsi (initiateCall)
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('videocall.initiate'), [
+                'solicitation_id' => $this->solicitation->id
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonFragment([
+            'success' => true
+        ]);
+    }
+
+    public function test_joincall_generates_and_appends_jitsi_jwt_token_when_configured()
+    {
+        // 1. Configura Jitsi com App ID e Secret fictícios
+        config()->set('services.jitsi.domain', 'jitsi.myhost.com');
+        config()->set('services.jitsi.app_id', 'test_app_id');
+        config()->set('services.jitsi.secret', 'test_secret_key');
+
+        // 2. Cria mensagem de videochamada ativa
+        $callMsg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->agent->id,
+            'text' => null,
+            'type' => 'videocall',
+            'metadata' => [
+                'room_id' => 'prisma-test-room',
+                'meet_url' => 'https://jitsi.myhost.com/prisma-test-room',
+                'status' => 'active'
+            ]
+        ]);
+
+        // 3. Executa a requisição JSON de joinCall
+        $response = $this->actingAs($this->agent)
+            ->getJson(route('videocall.join', $callMsg));
+
+        $response->assertStatus(200);
+        $url = $response->json('url');
+        
+        $this->assertStringContainsString('https://jitsi.myhost.com/prisma-test-room', $url);
+        $this->assertStringContainsString('jwt=', $url);
+
+        // O token JWT deve conter a assinatura correta e informações do usuário
+        $jwtToken = explode('jwt=', $url)[1];
+        $this->assertNotEmpty($jwtToken);
+    }
 }
 

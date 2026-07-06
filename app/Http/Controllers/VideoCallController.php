@@ -31,9 +31,20 @@ class VideoCallController extends Controller
             return redirect($route)->with("error", "Não é possível iniciar chamada de vídeo antes do atendimento ser iniciado pelo atendente.");
         }
 
+        // Verifica se já existe uma chamada de vídeo ativa para este chamado
+        $activeCallExists = Message::where('solicitation_id', $solicitationId)
+            ->where('type', 'videocall')
+            ->where('metadata->status', 'active')
+            ->exists();
+
+        if ($activeCallExists) {
+            return redirect($route)->with("error", "Não é possível iniciar uma nova chamada enquanto a chamada atual estiver ativa.");
+        }
+
         // Jitsi é o principal.
         $roomId = "prisma-" . $solicitationId . "-" . substr(md5(time()), 0, 8);
-        $meetUrl = "https://meet.jit.si/" . $roomId;
+        $jitsiDomain = config('services.jitsi.domain', 'meet.jit.si');
+        $meetUrl = "https://" . $jitsiDomain . "/" . $roomId;
 
         // Google Meet é fallback quando disponível.
         $fallbackMeetUrl = null;
@@ -77,6 +88,9 @@ class VideoCallController extends Controller
     public function joinCall(Request $request, Message $message)
     {
         if ($message->type !== 'videocall') {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Mensagem inválida.'], 422);
+            }
             return redirect()->back()->with('error', 'Mensagem inválida.');
         }
 
@@ -87,19 +101,52 @@ class VideoCallController extends Controller
         $targetUrl = $useFallback && $fallbackMeetUrl ? $fallbackMeetUrl : $meetUrl;
 
         if (!$targetUrl) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'URL da reunião não encontrada.'], 422);
+            }
             return redirect()->back()->with('error', 'URL da reunião não encontrada.');
         }
 
         if (($metadata['status'] ?? '') === 'ended') {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Esta reunião já foi encerrada.'], 422);
+            }
             return redirect()->back()->with('error', 'Esta reunião já foi encerrada.');
         }
 
         $solicitation = $message->solicitation;
         if ($solicitation && $solicitation->status === 'na_fila') {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Não é possível acessar a chamada de vídeo antes do atendimento ser iniciado pelo atendente.'], 422);
+            }
             return redirect()->back()->with('error', 'Não é possível acessar a chamada de vídeo antes do atendimento ser iniciado pelo atendente.');
         }
 
+        // Se for um link do Jitsi, gera o JWT dinâmico para o usuário atual
+        $roomId = $metadata['room_id'] ?? null;
+        if ($roomId && $this->isJitsiUrl($targetUrl)) {
+            $jwt = $this->generateJitsiJwt($roomId);
+            if ($jwt) {
+                $query = parse_url($targetUrl, PHP_URL_QUERY);
+                $separator = $query ? '&' : '?';
+                $targetUrl .= $separator . 'jwt=' . $jwt;
+            }
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'url' => $targetUrl]);
+        }
+
         return redirect($targetUrl);
+    }
+
+    private function isJitsiUrl($url)
+    {
+        if (!$url) return false;
+        $parsed = parse_url($url);
+        $host = $parsed['host'] ?? '';
+        $jitsiDomain = config('services.jitsi.domain', 'meet.jit.si');
+        return $host === 'meet.jit.si' || $host === $jitsiDomain;
     }
 
     /**
@@ -211,8 +258,19 @@ class VideoCallController extends Controller
             return response()->json(["error" => "Não é possível iniciar chamada de vídeo antes do atendimento ser iniciado pelo atendente."], 422);
         }
 
+        // Verifica se já existe uma chamada de vídeo ativa para este chamado
+        $activeCallExists = Message::where('solicitation_id', $solicitationId)
+            ->where('type', 'videocall')
+            ->where('metadata->status', 'active')
+            ->exists();
+
+        if ($activeCallExists) {
+            return response()->json(["error" => "Não é possível iniciar uma nova chamada enquanto a chamada atual estiver ativa."], 422);
+        }
+
         $roomId = "prisma-" . $solicitationId . "-" . substr(md5(time() . auth()->id()), 0, 8);
-        $meetUrl = "https://meet.jit.si/" . $roomId;
+        $jitsiDomain = config('services.jitsi.domain', 'meet.jit.si');
+        $meetUrl = "https://" . $jitsiDomain . "/" . $roomId;
         $fallbackMeetUrl = null;
 
         $spaceData = $this->createGoogleMeetSpace();
@@ -283,5 +341,92 @@ class VideoCallController extends Controller
                 "metadata" => $message->metadata,
             ]
         ]);
+    }
+
+    /**
+     * API endpoint to retrieve the signed Jitsi URL for a given solicitation.
+     * Returns JSON { url: "https://..." }.
+     */
+    public function generateJitsiUrl($solicitationId)
+    {
+        $sol = Solicitation::findOrFail($solicitationId);
+        // Busca a chamada de vídeo ativa associada à solicitação
+        $message = Message::where('solicitation_id', $solicitationId)
+            ->where('type', 'videocall')
+            ->where('metadata->status', 'active')
+            ->latest()
+            ->first();
+
+        if (!$message) {
+            return response()->json(['error' => 'Chamada não encontrada.'], 404);
+        }
+
+        $roomId = $message->metadata['room_id'] ?? null;
+        $meetUrl = $message->metadata['meet_url'] ?? null;
+        if (!$roomId || !$meetUrl) {
+            return response()->json(['url' => $meetUrl]);
+        }
+
+        // Gera JWT, se configurado
+        $jwt = $this->generateJitsiJwt($roomId);
+        if ($jwt) {
+            $separator = strpos($meetUrl, '?') !== false ? '&' : '?';
+            $meetUrl .= $separator . 'jwt=' . $jwt;
+        }
+
+        return response()->json(['url' => $meetUrl]);
+    }
+
+    private function generateJitsiJwt($roomName)
+    {
+        $appId = config('services.jitsi.app_id');
+        $appSecret = config('services.jitsi.secret');
+        $domain = config('services.jitsi.domain', 'meet.jit.si');
+
+        if (!$appId || !$appSecret) {
+            return null;
+        }
+
+        $user = auth()->user();
+        $isAtendente = $user->role === 'atendente';
+
+        $payload = [
+            'iss' => $appId,
+            'aud' => 'jitsi',
+            'sub' => $domain,
+            'room' => $roomName,
+            'iat' => time(),
+            'exp' => time() + 300, // 5 minutes expiration
+            'context' => [
+                'user' => [
+                    'id' => (string) $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'avatar' => null,
+                    'moderator' => $isAtendente,
+                    'affiliation' => $isAtendente ? 'owner' : 'member',
+                ],
+                'features' => [
+                    'recording' => true,
+                    'livestreaming' => true,
+                    'screen-sharing' => true,
+                ]
+            ]
+        ];
+
+        return $this->encodeJwt($payload, $appSecret);
+    }
+
+    private function encodeJwt(array $payload, string $secret): string
+    {
+        $header = json_encode(['alg' => 'HS256', 'typ' => 'JWT']);
+        
+        $base64UrlHeader = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
+        $base64UrlPayload = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode(json_encode($payload)));
+        
+        $signature = hash_hmac('sha256', $base64UrlHeader . "." . $base64UrlPayload, $secret, true);
+        $base64UrlSignature = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($signature));
+        
+        return $base64UrlHeader . "." . $base64UrlPayload . "." . $base64UrlSignature;
     }
 }

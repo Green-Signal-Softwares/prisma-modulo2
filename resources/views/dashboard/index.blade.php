@@ -26,7 +26,7 @@
         <!-- Conteúdo do Banner -->
         <div class="relative z-20 max-w-xl text-white flex flex-col gap-[15px]">
             <h2 class="text-3xl md:text-[40px] font-extrabold tracking-tight leading-tight select-none">Seja bem-vindo!</h2>
-            @if(Auth::check() && Auth::user()->role !== 'atendente')
+            @if(Auth::check() && Auth::user()->role === 'user')
             <div>
                 <button
                     onclick="openSupportModal()"

@@ -46,6 +46,7 @@ Route::middleware(['auth'])->group(function () {
     // Rotas de Cliente (Apenas role: user)
     Route::middleware(['role:user'])->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/solicitations/triage-flow', [DashboardController::class, 'getSupportTriageFlow'])->name('solicitations.triage-flow');
         Route::post('/solicitations', [DashboardController::class, 'store'])->name('solicitations.store');
         Route::post('/solicitations/{solicitation}/avaliacao', [DashboardController::class, 'avaliarAtendimento'])->name('solicitations.avaliacao.store');
         Route::get('/messages/{id?}', [ChatController::class, 'index'])->name('chat.index');
@@ -74,6 +75,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/tickets/{solicitation}', [DashboardController::class, 'showTicket'])->name('tickets.show');
         Route::get('/historico', [DashboardController::class, 'historico'])->name('historico');
         Route::get('/gestao-atendimento', [DashboardController::class, 'gestaoAtendimento'])->name('gestao-atendimento');
+        Route::post('/gestao-atendimento/salvar', [DashboardController::class, 'saveTriageFlow'])->name('gestao-atendimento.save');
         Route::get('/presets-globais', [DashboardController::class, 'presetsGlobais'])->name('presets-globais');
         Route::get('/log-atividades', [DashboardController::class, 'logAtividades'])->name('log-atividades');
 

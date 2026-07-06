@@ -10,6 +10,7 @@ use App\Models\Preset;
 use App\Models\Tag;
 use App\Models\AccessProfile;
 use App\Models\ActivityLog;
+use App\Models\TriageFlowConfig;
 use App\Notifications\SolicitationNotification;
 
 use Illuminate\Http\Request;
@@ -23,7 +24,9 @@ class DashboardController extends Controller
     {
         if (auth()->user()->role === 'atendente') {
             // Busca todas as solicitações do sistema para o atendente
-            $solicitations = Solicitation::orderBy('created_at', 'desc')->get();
+            $query = Solicitation::query();
+            $this->applyQueueTypeFilterForAttendant($query);
+            $solicitations = $query->orderBy('created_at', 'desc')->get();
         } else {
             // Busca apenas as solicitações reais do usuário do banco de dados
             $solicitations = Solicitation::where('user_id', auth()->id())
@@ -49,6 +52,8 @@ class DashboardController extends Controller
     public function tickets(Request $request)
     {
         $query = Solicitation::query();
+
+        $this->applyQueueTypeFilterForAttendant($query);
 
         // Filtro de ID (De/Até ou parcial)
         if ($request->filled('id_de')) {
@@ -148,6 +153,8 @@ class DashboardController extends Controller
             'category' => 'nullable|string',
             'title' => 'required|string|max:255',
             'description' => 'required|string',
+            'triage_path' => 'nullable|string|max:1000',
+            'attendant_type' => 'nullable|string|max:50',
             'files.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,zip,txt|max:10240',
         ]);
 
@@ -189,6 +196,27 @@ class DashboardController extends Controller
         }
 
         return redirect()->route('chat.index', $solicitation->id)->with('success', 'Solicitação de suporte enviada com sucesso! Ticket #' . $ticketNumber);
+    }
+
+    /**
+     * Returns triage flow tree for client opening wizard.
+     */
+    public function getSupportTriageFlow()
+    {
+        try {
+            $config = TriageFlowConfig::first();
+            $flows = $config && is_array($config->data) ? $config->data : $this->getDefaultTriageFlow();
+
+            return response()->json([
+                'success' => true,
+                'flows' => $flows,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => true,
+                'flows' => $this->getDefaultTriageFlow(),
+            ]);
+        }
     }
 
     /**
@@ -382,7 +410,129 @@ class DashboardController extends Controller
      */
     public function gestaoAtendimento()
     {
-        return view('admin.gestao_atendimento');
+        $config = TriageFlowConfig::first();
+
+        if (!$config) {
+            $config = TriageFlowConfig::create([
+                'key' => 'default',
+                'data' => $this->getDefaultTriageFlow(),
+            ]);
+        }
+
+        return view('admin.gestao_atendimento', [
+            'triageFlows' => $config->data,
+        ]);
+    }
+
+    /**
+     * Persist triage flow tree from admin UI.
+     */
+    public function saveTriageFlow(Request $request)
+    {
+        $data = $request->validate([
+            'flows' => 'required|array',
+        ]);
+
+        TriageFlowConfig::updateOrCreate(
+            ['key' => 'default'],
+            ['data' => $data['flows']]
+        );
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Default triage flow used on first load.
+     */
+    private function getDefaultTriageFlow(): array
+    {
+        return [
+            [
+                'id' => 1,
+                'name' => 'Promoções',
+                'type' => 'setor',
+                'n1' => true,
+                'n2' => true,
+                'children' => [
+                    [
+                        'id' => 2,
+                        'name' => 'Promoções 1',
+                        'type' => 'fila',
+                        'n1' => true,
+                        'n2' => true,
+                        'children' => [],
+                    ],
+                    [
+                        'id' => 3,
+                        'name' => 'Promoções 2',
+                        'type' => 'fila',
+                        'n1' => true,
+                        'n2' => false,
+                        'children' => [],
+                    ],
+                ],
+            ],
+            [
+                'id' => 9,
+                'name' => 'Técnico',
+                'type' => 'setor',
+                'n1' => true,
+                'n2' => true,
+                'children' => [],
+            ],
+            [
+                'id' => 10,
+                'name' => 'Vendas',
+                'type' => 'setor',
+                'n1' => true,
+                'n2' => true,
+                'children' => [],
+            ],
+        ];
+    }
+
+    /**
+     * Restrict queue visibility for attendants according to access profile levels.
+     */
+    private function applyQueueTypeFilterForAttendant($query): void
+    {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'atendente') {
+            return;
+        }
+
+        $profile = $user->accessProfile;
+        if (!$profile) {
+            return;
+        }
+
+        $canN1 = (bool) $profile->nivel_n1;
+        $canN2 = (bool) $profile->nivel_n2;
+
+        if ($canN1 && $canN2) {
+            return;
+        }
+
+        $query->where(function ($outer) use ($canN1, $canN2) {
+            // Itens fora da fila continuam visíveis normalmente.
+            $outer->where('status', '!=', 'na_fila')
+                ->orWhere(function ($queueScoped) use ($canN1, $canN2) {
+                    $queueScoped->where('status', 'na_fila')
+                        ->where(function ($typeMatch) use ($canN1, $canN2) {
+                            // Backward compatibility for chamados sem metadado de tipo.
+                            $typeMatch->where('description', 'not like', '%Tipo de Atendimento:%')
+                                ->orWhere('description', 'like', '%Tipo de Atendimento: N1/N2%');
+
+                            if ($canN1) {
+                                $typeMatch->orWhere('description', 'like', '%Tipo de Atendimento: N1%');
+                            }
+
+                            if ($canN2) {
+                                $typeMatch->orWhere('description', 'like', '%Tipo de Atendimento: N2%');
+                            }
+                        });
+                });
+        });
     }
 
     public function gestaoUsuarios(Request $request)

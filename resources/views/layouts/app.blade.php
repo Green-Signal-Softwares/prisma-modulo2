@@ -113,7 +113,7 @@
         <div class="border-b border-white/20 my-1"></div>
 
         <!-- Pedir Suporte Online White Pill Button -->
-        @if(Auth::check() && Auth::user()->role !== 'atendente')
+        @if(Auth::check() && Auth::user()->role === 'user')
             <button onclick="openSupportModal()"
                 class="w-full bg-white hover:bg-gray-50 text-[#DA291C] text-center font-bold py-3 px-4 rounded-2xl transition-all shadow-sm block text-sm active:scale-[0.98] cursor-pointer mb-2">
                 Pedir suporte online
@@ -535,29 +535,16 @@
                         style="font-family: 'AMX', sans-serif; font-size: 31.95px; line-height: 120%; font-weight: 600; background: linear-gradient(89.24deg, #A01724 0%, #DA291C 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent;">
                         Bem vindo ao Claro Prisma
                     </h3>
-                    <p class="text-xs md:text-sm text-gray-500 font-semibold max-w-md mx-auto leading-relaxed">
-                        Selecione abaixo o assunto da sua mensagem para que possamos te atender melhor:
+                    <p id="support-step-help-text" class="text-xs md:text-sm text-gray-500 font-semibold max-w-md mx-auto leading-relaxed">
+                        Siga os passos conforme o fluxo cadastrado para chegar ao atendimento correto.
                     </p>
                 </div>
 
                 <!-- Opções (Assuntos) -->
-                <div class="flex flex-col gap-3 my-2">
-                    @php
-                        $supportOptions = [
-                            'Promoções',
-                            'Sistemas e acesso',
-                            'Vigência de ofertas',
-                            'Assuntos técnicos',
-                            'Outros assuntos'
-                        ];
-                    @endphp
-                    @foreach($supportOptions as $option)
-                        <button type="button" onclick="selectSupportOption(this, '{{ $option }}')"
-                            class="w-full text-center py-4 px-6 border border-gray-200 hover:border-[#DA291C] hover:bg-red-50/20 rounded-xl transition-all cursor-pointer focus:outline-none support-option-btn active:scale-[0.99] font-bold text-[22px] leading-[1.3] text-[#404040]"
-                            style="font-family: 'AMX', sans-serif;">
-                            {{ $option }}
-                        </button>
-                    @endforeach
+                <div id="support-step-options" class="flex flex-col gap-3 my-2"></div>
+
+                <div id="support-step-empty" class="hidden text-center text-sm font-semibold text-gray-500">
+                    Nenhuma opção de triagem disponível no momento.
                 </div>
 
                 <!-- Botões de Ação -->
@@ -583,7 +570,7 @@
                         Informações complementares
                     </h3>
                     <p class="text-xs md:text-sm text-gray-500 font-semibold max-w-md mx-auto leading-relaxed">
-                        Agora conte um pouco mais sobre a sua dúvida para direcionarmos ao atendente certo.
+                        Preencha Título e Mensagem com as informações adicionais para iniciar a conversa.
                     </p>
                 </div>
 
@@ -593,9 +580,13 @@
                     @csrf
                     <!-- Categoria Oculta -->
                     <input type="hidden" name="category" id="selected-category-input" value="">
+                    <input type="hidden" name="triage_path" id="selected-triage-path-input" value="">
+                    <input type="hidden" name="attendant_type" id="selected-attendant-type-input" value="">
 
                     <!-- Título da mensagem -->
                     <div>
+                        <label for="support-title-input" class="block text-xs font-bold text-gray-600 mb-1"
+                            style="font-family: 'AMX', sans-serif;">Título</label>
                         <input type="text" name="title" id="support-title-input" placeholder="Título da mensagem"
                             required oninput="validateStep2Form()"
                             class="w-full px-4 py-3.5 border border-gray-200 rounded-[12px] text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all font-medium"
@@ -604,6 +595,8 @@
 
                     <!-- Texto da mensagem -->
                     <div>
+                        <label for="support-description-input" class="block text-xs font-bold text-gray-600 mb-1"
+                            style="font-family: 'AMX', sans-serif;">Mensagem</label>
                         <textarea name="description" id="support-description-input" placeholder="Texto da mensagem"
                             rows="4" required oninput="validateStep2Form()"
                             class="w-full px-4 py-3.5 border border-gray-200 rounded-[12px] text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all font-medium resize-none"
@@ -821,6 +814,10 @@
 
         // Modal de Suporte Online State Management
         let selectedSupportOption = null;
+        let supportFlows = [];
+        let supportSelectionPath = [];
+        let supportCurrentOptions = [];
+        let supportFinalNode = null;
 
         function openSupportModal() {
             const modal = document.getElementById('support-modal');
@@ -831,6 +828,8 @@
                 content.classList.remove('scale-95', 'opacity-0');
                 content.classList.add('scale-100', 'opacity-100');
             }, 10);
+
+            loadSupportFlows();
         }
 
         function closeSupportModal() {
@@ -845,25 +844,150 @@
             }, 300);
         }
 
-        function selectSupportOption(element, option) {
-            // Limpa seleção anterior
-            const buttons = document.querySelectorAll('.support-option-btn');
-            buttons.forEach(btn => {
-                btn.classList.remove('border-[#DA291C]', 'bg-red-50/10', 'text-[#DA291C]');
-                btn.classList.add('border-gray-200', 'text-[#404040]');
+        async function loadSupportFlows() {
+            const optionsWrap = document.getElementById('support-step-options');
+            const emptyState = document.getElementById('support-step-empty');
+            optionsWrap.innerHTML = '<div class="text-center text-sm text-gray-500 font-semibold py-2">Carregando fluxo...</div>';
+
+            try {
+                const response = await fetch("{{ route('solicitations.triage-flow') }}", {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await response.json();
+                supportFlows = (data && data.success && Array.isArray(data.flows)) ? data.flows : [];
+            } catch (e) {
+                supportFlows = [];
+            }
+
+            supportSelectionPath = [];
+            supportFinalNode = null;
+            selectedSupportOption = null;
+            supportCurrentOptions = supportFlows.filter(node => node && (node.n1 || node.n2));
+
+            if (supportCurrentOptions.length === 0) {
+                optionsWrap.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                disableSupportAdvance();
+                updateSupportPathUI();
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            renderSupportStepOptions();
+            updateSupportPathUI();
+        }
+
+        function renderSupportStepOptions() {
+            const optionsWrap = document.getElementById('support-step-options');
+            const emptyState = document.getElementById('support-step-empty');
+
+            optionsWrap.innerHTML = '';
+            if (!Array.isArray(supportCurrentOptions) || supportCurrentOptions.length === 0) {
+                emptyState.classList.remove('hidden');
+                disableSupportAdvance();
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            supportCurrentOptions.forEach(node => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.onclick = () => selectSupportNode(node, button);
+                button.className = "w-full text-center py-4 px-6 border border-gray-200 hover:border-[#DA291C] hover:bg-red-50/20 rounded-xl transition-all cursor-pointer focus:outline-none support-option-btn active:scale-[0.99]";
+                button.style.fontFamily = "'AMX', sans-serif";
+
+                const levelText = getAttendantTypeLabel(node);
+                button.innerHTML = `
+                    <div class="font-bold text-[22px] leading-[1.3] text-[#404040]">${escapeHtml(node.name || 'Item')}</div>
+                    <div class="mt-1 text-[11px] font-semibold text-gray-500">Atendente: ${levelText}</div>
+                `;
+
+                optionsWrap.appendChild(button);
             });
 
-            // Destaca a opção selecionada
-            element.classList.remove('border-gray-200', 'text-[#404040]');
-            element.classList.add('border-[#DA291C]', 'bg-red-50/10', 'text-[#DA291C]');
+            disableSupportAdvance();
+        }
 
-            selectedSupportOption = option;
+        function selectSupportNode(node, buttonEl) {
+            const optionButtons = document.querySelectorAll('.support-option-btn');
+            optionButtons.forEach(btn => {
+                btn.classList.remove('border-[#DA291C]', 'bg-red-50/10');
+                btn.classList.add('border-gray-200');
+            });
 
-            // Ativa o botão avançar
+            if (buttonEl) {
+                buttonEl.classList.remove('border-gray-200');
+                buttonEl.classList.add('border-[#DA291C]', 'bg-red-50/10');
+            }
+
+            selectedSupportOption = node.name || null;
+
+            const hasChildren = Array.isArray(node.children) && node.children.some(child => child && (child.n1 || child.n2));
+            if (hasChildren) {
+                supportSelectionPath.push(node);
+                supportCurrentOptions = node.children.filter(child => child && (child.n1 || child.n2));
+                selectedSupportOption = null;
+                renderSupportStepOptions();
+                updateSupportPathUI();
+                return;
+            }
+
+            supportSelectionPath.push(node);
+            supportFinalNode = node;
+            selectedSupportOption = supportSelectionPath[0]?.name || node.name || null;
+            updateSupportPathUI();
+            enableSupportAdvance();
+        }
+
+        function updateSupportPathUI() {
+            const helpText = document.getElementById('support-step-help-text');
+            if (supportSelectionPath.length === 0) {
+                helpText.textContent = 'Siga os passos conforme o fluxo cadastrado para chegar ao atendimento correto.';
+                return;
+            }
+
+            helpText.textContent = supportFinalNode
+                ? 'Seleção de triagem concluída. Avance para informar os detalhes do chamado.'
+                : 'Selecione a próxima etapa do fluxo para continuar.';
+        }
+
+        function disableSupportAdvance() {
+            const btnAdvance = document.getElementById('btn-advance-support');
+            btnAdvance.disabled = true;
+            btnAdvance.classList.remove('bg-[#DA291C]', 'hover:bg-[#B31D14]', 'cursor-pointer');
+            btnAdvance.classList.add('bg-[#EAA8A8]', 'cursor-not-allowed');
+        }
+
+        function enableSupportAdvance() {
             const btnAdvance = document.getElementById('btn-advance-support');
             btnAdvance.disabled = false;
             btnAdvance.classList.remove('bg-[#EAA8A8]', 'cursor-not-allowed');
             btnAdvance.classList.add('bg-[#DA291C]', 'hover:bg-[#B31D14]', 'cursor-pointer');
+        }
+
+        function getAttendantTypeLabel(node) {
+            const n1 = !!node?.n1;
+            const n2 = !!node?.n2;
+            if (n1 && n2) return 'Nível 1 e Nível 2';
+            if (n1) return 'Nível 1';
+            if (n2) return 'Nível 2';
+            return 'Não definido';
+        }
+
+        function getAttendantTypeCompact(node) {
+            const n1 = !!node?.n1;
+            const n2 = !!node?.n2;
+            if (n1 && n2) return 'N1/N2';
+            if (n1) return 'N1';
+            if (n2) return 'N2';
+            return '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = String(text ?? '');
+            return div.innerHTML;
         }
 
         let attachedFiles = [];
@@ -927,25 +1051,26 @@
 
         function resetSupportModal() {
             selectedSupportOption = null;
-            const buttons = document.querySelectorAll('.support-option-btn');
-            buttons.forEach(btn => {
-                btn.classList.remove('border-[#DA291C]', 'bg-red-50/10', 'text-[#DA291C]');
-                btn.classList.add('border-gray-200', 'text-[#404040]');
-            });
+            supportSelectionPath = [];
+            supportCurrentOptions = [];
+            supportFinalNode = null;
 
-            const btnAdvance = document.getElementById('btn-advance-support');
-            btnAdvance.disabled = true;
-            btnAdvance.classList.remove('bg-[#DA291C]', 'hover:bg-[#B31D14]', 'cursor-pointer');
-            btnAdvance.classList.add('bg-[#EAA8A8]', 'cursor-not-allowed');
+            disableSupportAdvance();
 
             // Reseta inputs do Step 2
             document.getElementById('support-title-input').value = '';
             document.getElementById('support-description-input').value = '';
             document.getElementById('support-file-input').value = '';
             document.getElementById('selected-category-input').value = '';
+            document.getElementById('selected-triage-path-input').value = '';
+            document.getElementById('selected-attendant-type-input').value = '';
 
             attachedFiles = [];
             renderAttachedFiles();
+
+            document.getElementById('support-step-options').innerHTML = '';
+            document.getElementById('support-step-empty').classList.add('hidden');
+            document.getElementById('support-step-help-text').textContent = 'Siga os passos conforme o fluxo cadastrado para chegar ao atendimento correto.';
 
             // Retorna ao Step 1
             goToStep(1);
@@ -965,7 +1090,14 @@
                 step2.classList.remove('hidden');
                 step2.classList.add('flex');
                 // Define a categoria no input hidden
-                document.getElementById('selected-category-input').value = selectedSupportOption;
+                const firstNode = supportSelectionPath[0] || supportFinalNode;
+                const category = firstNode ? firstNode.name : selectedSupportOption;
+                const triagePath = supportSelectionPath.map(node => node.name).filter(Boolean).join(' > ');
+                const attendantType = getAttendantTypeCompact(supportFinalNode || firstNode);
+
+                document.getElementById('selected-category-input').value = category || '';
+                document.getElementById('selected-triage-path-input').value = triagePath;
+                document.getElementById('selected-attendant-type-input').value = attendantType;
                 validateStep2Form();
             }
         }
