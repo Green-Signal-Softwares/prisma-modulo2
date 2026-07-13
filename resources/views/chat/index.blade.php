@@ -1093,6 +1093,7 @@
                             @endif
 
                             <!-- Mensagem Automática 1 -->
+                            @if(!in_array(auth()->user()->role, ['atendente', 'admin'], true))
                             <div class="flex flex-col items-center justify-center text-center py-4 px-6 gap-1.5 chat-message">
                                 <div class="flex items-center gap-2 text-gray-500 italic text-sm font-semibold justify-center">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
@@ -1100,23 +1101,19 @@
                                         <path stroke-linecap="round" stroke-linejoin="round"
                                             d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                                     </svg>
-                                    @if(auth()->user()->role === 'atendente')
-                                        <span>Chamado ID {{ $activeSolicitation->ticket_number }} atribuído a você para
-                                            atendimento.</span>
+                                    @if($activeSolicitation->status === 'na_fila')
+                                        <span id="queue-status-inline">Chamado recebido ID {{ $activeSolicitation->ticket_number }}!
+                                            Você é o {{ $queuePosition ?? 1 }}º na fila. Tempo médio de espera: 20 minutos</span>
                                     @else
-                                        @if($activeSolicitation->status === 'na_fila')
-                                            <span id="queue-status-inline">Chamado recebido ID {{ $activeSolicitation->ticket_number }}!
-                                                Você é o {{ $queuePosition ?? 1 }}º na fila. Tempo médio de espera: 20 minutos</span>
-                                        @else
-                                            <span>Chamado recebido ID {{ $activeSolicitation->ticket_number }}! Aguardando atualização do
-                                                atendimento.</span>
-                                        @endif
+                                        <span>Chamado recebido ID {{ $activeSolicitation->ticket_number }}! Aguardando atualização do
+                                            atendimento.</span>
                                     @endif
                                 </div>
                                 <p class="text-[9px] font-extrabold text-gray-450 tracking-wider uppercase">
                                     MENSAGEM AUTOMÁTICA DO SISTEMA - {{ $activeSolicitation->created_at->format('d/m - H:i') }}
                                 </p>
                             </div>
+                            @endif
 
 
                             <!-- Mensagens do Banco de Dados -->

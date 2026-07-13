@@ -249,7 +249,7 @@ class DashboardController extends Controller
         Message::create([
             'solicitation_id' => $solicitation->id,
             'user_id' => auth()->id(),
-            'text' => "Chamado ID {$solicitation->ticket_number} atribuído a você para atendimento.",
+            'text' => "Chamado ID {$solicitation->ticket_number} atribuído a " . auth()->user()->name . " para atendimento.",
             'type' => 'internal'
         ]);
 
