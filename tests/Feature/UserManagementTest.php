@@ -226,4 +226,216 @@ class UserManagementTest extends TestCase
         $response->assertOk();
         $this->assertDatabaseMissing('users', ['id' => $user->id]);
     }
+
+    public function test_user_can_access_profile_central()
+    {
+        $this->get(route('profile.central'))->assertRedirect(route('login'));
+
+        $this->actingAs($this->client)
+            ->get(route('profile.central'))
+            ->assertOk()
+            ->assertViewIs('profile.central');
+    }
+
+    public function test_user_can_update_profile_info()
+    {
+        $response = $this->actingAs($this->client)
+            ->post(route('profile.update'), [
+                'name' => 'Novo Nome Cliente',
+                'phone' => '(99) 99999-9999',
+                'login' => 'CLIENTE999',
+                'email' => 'novoemail@claro.com.br'
+            ]);
+
+        $response->assertRedirect(route('profile.central'));
+        $this->assertDatabaseHas('users', [
+            'id' => $this->client->id,
+            'name' => 'Novo Nome Cliente',
+            'phone' => '(99) 99999-9999',
+            'login' => 'CLIENTE999',
+            'email' => 'novoemail@claro.com.br'
+        ]);
+    }
+
+    public function test_user_can_update_password()
+    {
+        $user = User::factory()->create([
+            'role' => 'user',
+            'email' => 'userpasswordtest@claro.com.br',
+            'password' => \Illuminate\Support\Facades\Hash::make('password123')
+        ]);
+
+        $response = $this->actingAs($user)
+            ->post(route('profile.update'), [
+                'name' => $user->name,
+                'email' => $user->email,
+                'current_password' => 'password123',
+                'new_password' => 'newpassword123',
+                'new_password_confirmation' => 'newpassword123'
+            ]);
+
+        $response->assertRedirect(route('profile.central'));
+        $user->refresh();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('newpassword123', $user->password));
+    }
+
+    public function test_admin_can_access_notifications_index()
+    {
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.notifications.index'));
+
+        $response->assertStatus(200);
+        $response->assertViewIs('admin.notifications.index');
+    }
+
+    public function test_non_admin_cannot_access_notifications_index()
+    {
+        $response = $this->actingAs($this->client)
+            ->get(route('admin.notifications.index'));
+
+        $response->assertRedirect(route('dashboard'));
+    }
+
+    public function test_admin_can_create_system_notification()
+    {
+        $data = [
+            'send_to' => 'all',
+            'type' => 'push',
+            'status' => 'inactive',
+            'start_date' => '2026-03-26',
+            'start_time' => '10:00',
+            'end_date' => '2026-03-27',
+            'end_time' => '18:00',
+            'title' => 'Test Notification Title',
+            'content' => 'Test notification content text here.',
+        ];
+
+        $response = $this->actingAs($this->admin)
+            ->post(route('admin.notifications.store'), $data);
+
+        $response->assertRedirect(route('admin.notifications.index'));
+        $this->assertDatabaseHas('system_notifications', [
+            'title' => 'Test Notification Title',
+            'content' => 'Test notification content text here.',
+            'send_to' => 'all',
+            'type' => 'push',
+            'status' => 'inactive',
+        ]);
+    }
+
+    public function test_admin_can_update_system_notification()
+    {
+        $notification = \App\Models\SystemNotification::create([
+            'send_to' => 'all',
+            'type' => 'system',
+            'status' => 'inactive',
+            'start_at' => '2026-03-26 10:00:00',
+            'end_at' => '2026-03-27 18:00:00',
+            'title' => 'Original Title',
+            'content' => 'Original content',
+        ]);
+
+        $updateData = [
+            'send_to' => 'atendente',
+            'type' => 'email',
+            'status' => 'active',
+            'start_date' => '2026-04-01',
+            'start_time' => '12:00',
+            'end_date' => '2026-04-02',
+            'end_time' => '14:00',
+            'title' => 'Updated Title',
+            'content' => 'Updated content',
+        ];
+
+        $response = $this->actingAs($this->admin)
+            ->put(route('admin.notifications.update', $notification->id), $updateData);
+
+        $response->assertRedirect(route('admin.notifications.index'));
+        $this->assertDatabaseHas('system_notifications', [
+            'id' => $notification->id,
+            'title' => 'Updated Title',
+            'content' => 'Updated content',
+            'type' => 'email',
+            'send_to' => 'atendente',
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_admin_can_delete_system_notification()
+    {
+        $notification = \App\Models\SystemNotification::create([
+            'send_to' => 'all',
+            'type' => 'system',
+            'start_at' => '2026-03-26 10:00:00',
+            'end_at' => '2026-03-27 18:00:00',
+            'title' => 'Notification to delete',
+            'content' => 'Content to delete',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->delete(route('admin.notifications.destroy', $notification->id));
+
+        $response->assertRedirect(route('admin.notifications.index'));
+        $this->assertDatabaseMissing('system_notifications', [
+            'id' => $notification->id,
+        ]);
+    }
+
+    public function test_active_system_notification_renders_on_dashboard()
+    {
+        $notification = \App\Models\SystemNotification::create([
+            'send_to' => 'all',
+            'type' => 'system',
+            'status' => 'active',
+            'start_at' => now()->subHour(),
+            'end_at' => now()->addHour(),
+            'title' => 'System Title',
+            'content' => 'System message text to show',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->followingRedirects()
+            ->get(route('dashboard'));
+
+        $response->assertSee('ATENÇÃO: System message text to show', false);
+    }
+
+    public function test_active_push_notification_renders_on_dashboard()
+    {
+        $notification = \App\Models\SystemNotification::create([
+            'send_to' => 'all',
+            'type' => 'push',
+            'status' => 'active',
+            'start_at' => now()->subHour(),
+            'end_at' => now()->addHour(),
+            'title' => 'Push Title',
+            'content' => 'Push message text to show in modal',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->followingRedirects()
+            ->get(route('dashboard'));
+
+        $response->assertSee('id="push-notification-modal"', false);
+        $response->assertSee('Push message text to show in modal', false);
+    }
+
+    public function test_inactive_notification_does_not_render()
+    {
+        $notification = \App\Models\SystemNotification::create([
+            'send_to' => 'all',
+            'type' => 'system',
+            'status' => 'inactive',
+            'start_at' => now()->subHour(),
+            'end_at' => now()->addHour(),
+            'title' => 'Inactive System Title',
+            'content' => 'Inactive system message text',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->followingRedirects()
+            ->get(route('dashboard'));
+
+        $response->assertDontSee('Inactive system message text', false);
+    }
 }

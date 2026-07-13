@@ -3,6 +3,35 @@
 @section('title', 'Ticket #' . $solicitation->ticket_number . ' - PRISMA Claro')
 
 @section('content')
+@php
+    $triageConfig = \App\Models\TriageFlowConfig::first();
+    $triageData = $triageConfig ? $triageConfig->data : [];
+
+    $setores = [];
+    $filas = [];
+
+    $extractFlows = function($items) use (&$setores, &$filas, &$extractFlows) {
+        foreach ($items as $item) {
+            $type = $item['type'] ?? '';
+            if ($type === 'setor') {
+                $setores[] = $item;
+            } elseif ($type === 'fila') {
+                $filas[] = $item;
+            }
+            if (!empty($item['children'])) {
+                $extractFlows($item['children']);
+            }
+        }
+    };
+    if (is_array($triageData)) {
+        $extractFlows($triageData);
+    }
+
+    $pessoas = \App\Models\User::whereIn('role', ['atendente', 'admin'])
+        ->where('status', '!=', 'inativo')
+        ->orderBy('name', 'asc')
+        ->get();
+@endphp
     <!-- Breadcrumbs -->
     <div class="mb-4 select-none">
         <div class="text-xs text-gray-500 mb-1">
@@ -517,19 +546,60 @@
             <div class="flex flex-col">
                 <span class="text-[9px] font-extrabold text-white/40 uppercase tracking-widest px-3 py-1">Setores</span>
                 <div class="flex flex-col gap-0.5">
-                    <button onclick="transferTo('Setor', 'Técnico')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Setor Técnico</button>
-                    <button onclick="transferTo('Setor', 'Comercial')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Setor Comercial</button>
-                    <button onclick="transferTo('Setor', 'Suporte')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Setor Suporte</button>
+                    @foreach($setores as $setor)
+                        <button onclick="transferTo('Setor', '{{ $setor['name'] }}')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                            {{ $setor['name'] }}
+                        </button>
+                    @endforeach
                 </div>
             </div>
             <!-- Filas -->
             <div class="flex flex-col">
                 <span class="text-[9px] font-extrabold text-white/40 uppercase tracking-widest px-3 py-1">Filas</span>
                 <div class="flex flex-col gap-0.5">
-                    <button onclick="transferTo('Fila 1', 'Nível 1')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Fila 1: Nível 1</button>
-                    <button onclick="transferTo('Fila 1', 'Nível 2')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Fila 1: Nível 2</button>
-                    <button onclick="transferTo('Fila 2', 'Nível 1')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Fila 2: Nível 1</button>
-                    <button onclick="transferTo('Fila 2', 'Nível 2')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">Fila 2: Nível 2</button>
+                    @foreach($filas as $fila)
+                        @if(!empty($fila['children']))
+                            <div>
+                                <div onclick="toggleSubmenu('fila-show-{{ $fila['id'] }}-sub', event)"
+                                    class="transfer-item-show flex items-center justify-between w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all cursor-pointer">
+                                    <span>{{ $fila['name'] }}</span>
+                                    <svg class="w-3 h-3 text-white/60 transition-transform duration-200"
+                                        fill="none" stroke="currentColor" stroke-width="2.5"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </div>
+                                <div id="fila-show-{{ $fila['id'] }}-sub"
+                                    class="hidden pl-4 pr-1 py-1 space-y-0.5 bg-black/10 rounded-lg mt-0.5">
+                                    @foreach($fila['children'] as $child)
+                                        <button onclick="transferTo('{{ $fila['name'] }}', '{{ $child['name'] }}')"
+                                            class="transfer-item-show w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                            {{ $child['name'] }}
+                                        </button>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @else
+                            <button onclick="transferTo('Fila', '{{ $fila['name'] }}')" class="transfer-item-show w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                {{ $fila['name'] }}
+                            </button>
+                        @endif
+                    @endforeach
+                </div>
+            </div>
+            <!-- Pessoas -->
+            <div class="flex flex-col">
+                <span class="text-[9px] font-extrabold text-white/40 uppercase tracking-widest px-3 py-1">Pessoas</span>
+                <div class="flex flex-col gap-0.5">
+                    @foreach($pessoas as $pessoa)
+                        <button onclick="transferTo('Pessoa', '{{ $pessoa->name }}')" class="transfer-item-show w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                            <div class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white uppercase">
+                                {{ substr($pessoa->name, 0, 2) }}
+                            </div>
+                            <span>{{ $pessoa->name }}</span>
+                        </button>
+                    @endforeach
                 </div>
             </div>
         </div>
@@ -980,5 +1050,18 @@
                 dropdown.classList.add('hidden');
             }
         });
+
+        function toggleSubmenu(id, event) {
+            if (event) event.stopPropagation();
+            const sub = document.getElementById(id);
+            if (sub) {
+                sub.classList.toggle('hidden');
+                // Rotate arrow if present
+                const arrow = event.currentTarget.querySelector('svg');
+                if (arrow) {
+                    arrow.classList.toggle('rotate-180');
+                }
+            }
+        }
     </script>
 @endsection

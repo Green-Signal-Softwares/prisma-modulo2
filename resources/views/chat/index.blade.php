@@ -3,6 +3,35 @@
 @section('title', 'Mensagens')
 
 @section('content')
+@php
+    $triageConfig = \App\Models\TriageFlowConfig::first();
+    $triageData = $triageConfig ? $triageConfig->data : [];
+
+    $setores = [];
+    $filas = [];
+
+    $extractFlows = function($items) use (&$setores, &$filas, &$extractFlows) {
+        foreach ($items as $item) {
+            $type = $item['type'] ?? '';
+            if ($type === 'setor') {
+                $setores[] = $item;
+            } elseif ($type === 'fila') {
+                $filas[] = $item;
+            }
+            if (!empty($item['children'])) {
+                $extractFlows($item['children']);
+            }
+        }
+    };
+    if (is_array($triageData)) {
+        $extractFlows($triageData);
+    }
+
+    $pessoas = \App\Models\User::where('role', 'atendente')
+        ->where('status', '!=', 'inativo')
+        ->orderBy('name', 'asc')
+        ->get();
+@endphp
     <style>
         /* Hide layout footer and reset main padding for the Chat route to prevent screen-level scrollbar */
         html,
@@ -765,7 +794,16 @@
                         <!-- Ações do Header -->
                         <div class="flex items-center gap-4 text-gray-700">
                             @if(auth()->user()->role === 'atendente')
-                                <!-- 1. Swap/Transfer -->
+                                @if(in_array($activeSolicitation->status, ['em_atendimento', 'em_replica']))
+                                    <!-- 1. Concluir -->
+                                    <button type="button" onclick="openChecklistModal()"
+                                        class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
+                                        title="Finalizar atendimento">
+                                        <img src="/icones/Icone Concluir.png" alt="Concluir" class="w-5.5 h-5.5 object-contain">
+                                    </button>
+                                @endif
+
+                                <!-- 2. Swap/Transfer -->
                                 <div class="relative">
                                     <button id="btn-transfer-menu" onclick="toggleTransferMenu(event)"
                                         class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
@@ -787,9 +825,7 @@
                                                         class="w-full h-full object-contain invert">
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <!-- Lista de Itens (Scrollable) -->
+                                                              <!-- Lista de Itens (Scrollable) -->
                                         <div
                                             class="flex-1 overflow-y-auto p-3 space-y-4 chat-scroll-clean text-left select-none max-h-[380px]">
                                             <!-- Setor -->
@@ -804,18 +840,12 @@
                                                     Setor
                                                 </div>
                                                 <div class="space-y-0.5">
-                                                    <button onclick="transferTo('Setor', 'Técnico')"
-                                                        class="transfer-item w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        Técnico
-                                                    </button>
-                                                    <button onclick="transferTo('Setor', 'Comercial')"
-                                                        class="transfer-item w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        Comercial
-                                                    </button>
-                                                    <button onclick="transferTo('Setor', 'Suporte')"
-                                                        class="transfer-item w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        Suporte
-                                                    </button>
+                                                    @foreach($setores as $setor)
+                                                        <button onclick="transferTo('Setor', '{{ $setor['name'] }}')"
+                                                            class="transfer-item w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                                            {{ $setor['name'] }}
+                                                        </button>
+                                                    @endforeach
                                                 </div>
                                             </div>
 
@@ -831,72 +861,36 @@
                                                     Filas
                                                 </div>
                                                 <div class="space-y-0.5">
-                                                    <!-- Fila 1 -->
-                                                    <div>
-                                                        <div onclick="toggleSubmenu('fila-1-sub', event)"
-                                                            class="transfer-item flex items-center justify-between w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all cursor-pointer">
-                                                            <span>Fila 1</span>
-                                                            <svg class="w-3 h-3 text-white/60 transition-transform duration-200"
-                                                                fill="none" stroke="currentColor" stroke-width="2.5"
-                                                                viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                                    d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                                            </svg>
-                                                        </div>
-                                                        <div id="fila-1-sub"
-                                                            class="hidden pl-4 pr-1 py-1 space-y-0.5 bg-black/10 rounded-lg mt-0.5">
-                                                            <button onclick="transferTo('Fila 1', 'Nível 1')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                1</button>
-                                                            <button onclick="transferTo('Fila 1', 'Nível 2')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                2</button>
-                                                        </div>
-                                                    </div>
-                                                    <!-- Fila 2 -->
-                                                    <div>
-                                                        <div onclick="toggleSubmenu('fila-2-sub', event)"
-                                                            class="transfer-item flex items-center justify-between w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all cursor-pointer">
-                                                            <span>Fila 2</span>
-                                                            <svg class="w-3 h-3 text-white/60 transition-transform duration-200"
-                                                                fill="none" stroke="currentColor" stroke-width="2.5"
-                                                                viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                                    d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                                            </svg>
-                                                        </div>
-                                                        <div id="fila-2-sub"
-                                                            class="hidden pl-4 pr-1 py-1 space-y-0.5 bg-black/10 rounded-lg mt-0.5">
-                                                            <button onclick="transferTo('Fila 2', 'Nível 1')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                1</button>
-                                                            <button onclick="transferTo('Fila 2', 'Nível 2')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                2</button>
-                                                        </div>
-                                                    </div>
-                                                    <!-- Fila 3 -->
-                                                    <div>
-                                                        <div onclick="toggleSubmenu('fila-3-sub', event)"
-                                                            class="transfer-item flex items-center justify-between w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all cursor-pointer">
-                                                            <span>Fila 3</span>
-                                                            <svg class="w-3 h-3 text-white/60 transition-transform duration-200"
-                                                                fill="none" stroke="currentColor" stroke-width="2.5"
-                                                                viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                                    d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                                                            </svg>
-                                                        </div>
-                                                        <div id="fila-3-sub"
-                                                            class="hidden pl-4 pr-1 py-1 space-y-0.5 bg-black/10 rounded-lg mt-0.5">
-                                                            <button onclick="transferTo('Fila 3', 'Nível 1')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                1</button>
-                                                            <button onclick="transferTo('Fila 3', 'Nível 2')"
-                                                                class="w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all">Nível
-                                                                2</button>
-                                                        </div>
-                                                    </div>
+                                                    @foreach($filas as $fila)
+                                                        @if(!empty($fila['children']))
+                                                            <div>
+                                                                <div onclick="toggleSubmenu('fila-{{ $fila['id'] }}-sub', event)"
+                                                                    class="transfer-item flex items-center justify-between w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all cursor-pointer">
+                                                                    <span>{{ $fila['name'] }}</span>
+                                                                    <svg class="w-3 h-3 text-white/60 transition-transform duration-200"
+                                                                        fill="none" stroke="currentColor" stroke-width="2.5"
+                                                                        viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                                            d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                                                    </svg>
+                                                                </div>
+                                                                <div id="fila-{{ $fila['id'] }}-sub"
+                                                                    class="hidden pl-4 pr-1 py-1 space-y-0.5 bg-black/10 rounded-lg mt-0.5">
+                                                                    @foreach($fila['children'] as $child)
+                                                                        <button onclick="transferTo('{{ $fila['name'] }}', '{{ $child['name'] }}')"
+                                                                            class="transfer-item w-full text-left px-2.5 py-1 rounded text-[11px] font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                                                            {{ $child['name'] }}
+                                                                        </button>
+                                                                    @endforeach
+                                                                </div>
+                                                            </div>
+                                                        @else
+                                                            <button onclick="transferTo('Fila', '{{ $fila['name'] }}')"
+                                                                class="transfer-item w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                                                {{ $fila['name'] }}
+                                                            </button>
+                                                        @endif
+                                                    @endforeach
                                                 </div>
                                             </div>
 
@@ -912,41 +906,25 @@
                                                     Pessoas
                                                 </div>
                                                 <div class="space-y-0.5">
-                                                    <!-- Ana Silva -->
-                                                    <button onclick="transferTo('Pessoa', 'ANA SILVA')"
-                                                        class="transfer-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80"
-                                                            alt="Ana Silva" class="w-6 h-6 rounded-full object-cover">
-                                                        <span>ANA SILVA</span>
-                                                    </button>
-                                                    <!-- Abner Junior -->
-                                                    <button onclick="transferTo('Pessoa', 'ABNER JÚNIOR')"
-                                                        class="transfer-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80"
-                                                            alt="Abner Junior" class="w-6 h-6 rounded-full object-cover">
-                                                        <span>ABNER JÚNIOR</span>
-                                                    </button>
-                                                    <!-- Bruna Ferreira -->
-                                                    <button onclick="transferTo('Pessoa', 'BRUNA FERREIRA')"
-                                                        class="transfer-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all">
-                                                        <div
-                                                            class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white">
-                                                            BF</div>
-                                                        <span>BRUNA FERREIRA</span>
-                                                    </button>
+                                                    @foreach($pessoas as $pessoa)
+                                                        <button onclick="transferTo('Pessoa', '{{ $pessoa->name }}')"
+                                                            class="transfer-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/90 hover:bg-white/10 hover:text-white transition-all bg-transparent border-0 cursor-pointer">
+                                                            <div class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white uppercase">
+                                                                {{ substr($pessoa->name, 0, 2) }}
+                                                            </div>
+                                                            <span>{{ $pessoa->name }}</span>
+                                                        </button>
+                                                    @endforeach
                                                 </div>
                                             </div>
-                                        </div>
+                                        </div>                                    </div>
                                     </div>
                                 </div>
-                                <!-- 2. PIP/Expand -->
-                                <button class="hover:text-[#DA291C] transition-colors focus:outline-none cursor-pointer"
-                                    title="Minimizar/Expandir">
-                                    <svg class="w-5.5 h-5.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                        stroke-width="2.2" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25A2.25 2.25 0 0 1 5.25 3h13.5A2.25 2.25 0 0 1 21 5.25Zm-9.5-3v14.25" />
-                                    </svg>
+                                <!-- 2. Tickets -->
+                                <button id="btn-tickets" onclick="openOpenTicketModal()"
+                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
+                                    title="Tickets">
+                                    <img src="/icones/Icone Ticket.png" alt="Tickets" class="w-5.5 h-5.5 object-contain">
                                 </button>
                                 <!-- 3. Tag/Label -->
                                 <button id="tag-menu-trigger" onclick="toggleTagMenu(event)"
@@ -962,7 +940,7 @@
                                 </button>
                                 <!-- 5. Chamada de vídeo -->
                                 <button id="btn-videocall-atendente" onclick="initiateVideoCall({{ $activeSolicitation->id }})"
-                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center {{ $activeSolicitation->status === 'na_fila' ? 'hidden' : '' }}"
+                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Iniciar chamada de vídeo">
                                     <img src="/icones/Icone Video Chamada.png" alt="Vídeo Chamada"
                                         class="w-5.5 h-5.5 object-contain">
@@ -975,16 +953,6 @@
                                     <span
                                         class="absolute -top-1.2 -right-1 text-[9px] font-extrabold text-gray-700 bg-white rounded-full px-0.5 border border-white">+</span>
                                 </button>
-                                <!-- 7. Finalizar atendimento -->
-                                <button type="button" onclick="openChecklistModal()"
-                                    class="hover:text-[#DA291C] transition-colors focus:outline-none cursor-pointer"
-                                    title="Finalizar atendimento">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2"
-                                        stroke="currentColor" class="w-5.5 h-5.5">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M9 12.75 11.25 15 15 9.75m6 2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                    </svg>
-                                </button>
                             @else
                                 <button onclick="toggleChatSearch()"
                                     class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
@@ -992,7 +960,7 @@
                                     <img src="/icones/Icone Buscar.png" alt="Buscar" class="w-5 h-5 object-contain">
                                 </button>
                                 <button id="btn-videocall-user" onclick="initiateVideoCall({{ $activeSolicitation->id }})"
-                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center {{ $activeSolicitation->status === 'na_fila' ? 'hidden' : '' }}"
+                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Iniciar chamada de vídeo">
                                     <img src="/icones/Icone Video Chamada.png" alt="Vídeo Chamada"
                                         class="w-5.5 h-5.5 object-contain">
@@ -1038,6 +1006,20 @@
                                 $solicitationFiles = ($activeSolicitation && $activeSolicitation->file_path && is_array($activeSolicitation->file_path)) ? $activeSolicitation->file_path : [];
                                 $messageFiles = ($activeSolicitation && $activeSolicitation->messages) ? $activeSolicitation->messages->where('file_path', '!=', '')->whereNotNull('file_path')->pluck('file_path')->toArray() : [];
                                 $totalAttachmentsCount = count($solicitationFiles) + count($messageFiles);
+
+                                // Limpa a descrição para exibição no chat
+                                $cleanDesc = $activeSolicitation->description;
+                                
+                                // Remove prefixos de categoria/setor como "[Setor] - " ou "[Setor]"
+                                if (str_contains($cleanDesc, '] - ')) {
+                                    $cleanDesc = explode('] - ', $cleanDesc, 2)[1];
+                                } elseif (str_contains($cleanDesc, '] ')) {
+                                    $cleanDesc = explode('] ', $cleanDesc, 2)[1];
+                                }
+                                
+                                // Remove o tipo de atendimento do chat para todos os usuários
+                                $cleanDesc = preg_replace('/Tipo de Atendimento:\s*(N1|N2|N1\/N2)/i', '', $cleanDesc);
+                                $cleanDesc = trim($cleanDesc);
                             @endphp
                             <!-- Mensagem de Abertura (Descrição da Demanda) -->
                             <div class="group flex items-center {{ auth()->user()->role === 'atendente' ? 'justify-start mr-auto' : 'justify-end ml-auto' }} gap-3 max-w-[85%] relative chat-message"
@@ -1047,12 +1029,13 @@
                                     class="flex flex-col {{ auth()->user()->role === 'atendente' ? 'items-start' : 'items-end' }} gap-1 max-w-[90%] relative">
                                     <div
                                         class="relative p-4 {{ auth()->user()->role === 'atendente' ? 'bg-[#EDEDED] text-gray-800 rounded-2xl rounded-tl-none border border-transparent' : 'text-white bg-[#DA291C] rounded-2xl rounded-tr-none' }} shadow-md flex flex-col gap-2 pr-8 message-bubble-content transition-all duration-300">
-                                        <span class="message-text">
-                                            @if(str_contains($activeSolicitation->description, '] - '))
-                                                {{ explode('] - ', $activeSolicitation->description, 2)[1] }}
-                                            @else
-                                                {{ $activeSolicitation->description }}
-                                            @endif
+                                        <span class="message-text flex flex-col gap-1.5">
+                                            <strong class="text-sm font-extrabold block border-b pb-1 {{ auth()->user()->role === 'atendente' ? 'border-gray-300/40 text-gray-900' : 'border-white/20 text-white' }}">
+                                                {{ $activeSolicitation->title }}
+                                            </strong>
+                                            <span class="text-xs block whitespace-pre-line leading-relaxed">
+                                                {{ $cleanDesc }}
+                                            </span>
                                         </span>
                                         <div
                                             class="flex justify-between items-center text-[9px] font-extrabold tracking-wider {{ auth()->user()->role === 'atendente' ? 'text-gray-500 border-gray-300/30' : 'text-white/90 border-white/10' }} uppercase border-t pt-1.5 gap-4">
@@ -1135,26 +1118,19 @@
                                 </p>
                             </div>
 
-                            <!-- Mensagem Automática 2 -->
-                            <div id="sistema-atendimento-iniciado"
-                                class="text-center py-1 {{ in_array($activeSolicitation->status, ['na_fila', 'aberta', 'nova']) ? 'hidden' : '' }} chat-message">
-                                <p class="text-xs font-bold text-gray-550 italic">
-                                    @if(auth()->user()->role === 'atendente')
-                                        <span id="atendimento-iniciado-text">Você iniciou o atendimento com
-                                            {{ $activeSolicitation->user->name ?? 'Cliente' }}</span>
-                                    @else
-                                        <span
-                                            id="atendimento-iniciado-text">{{ $activeSolicitation->atendente->name ?? 'LUCAS R. - SUPORTE PRISMA' }}
-                                            irá dar continuidade ao seu atendimento</span>
-                                    @endif
-                                </p>
-                            </div>
 
                             <!-- Mensagens do Banco de Dados -->
                             @if($activeSolicitation->messages)
                                 @foreach($activeSolicitation->messages as $msg)
                                     @php
-                                        $isCurrentUser = $msg->user_id === auth()->id();
+                                        $currentUserRole = auth()->user()->role;
+                                        $msgSenderRole = $msg->user ? $msg->user->role : 'system';
+                                        
+                                        if (in_array($currentUserRole, ['atendente', 'admin'], true)) {
+                                            $isCurrentUser = in_array($msgSenderRole, ['atendente', 'admin'], true);
+                                        } else {
+                                            $isCurrentUser = ($msgSenderRole === 'user');
+                                        }
                                     @endphp
 
                                     {{-- Card especial de Videochamada --}}
@@ -1205,6 +1181,20 @@
                                                 @endif
                                             </div>
                                         </div>
+                                    @elseif(($msg->type ?? 'text') === 'internal')
+                                        @if(in_array(auth()->user()->role, ['atendente', 'admin'], true))
+                                            <div class="flex flex-col items-center justify-center text-center py-4 px-6 gap-1.5 chat-message" data-message-id="{{ $msg->id }}">
+                                                <div class="flex items-center gap-2 text-gray-500 italic text-sm font-semibold justify-center">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-gray-400 flex-shrink-0">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path>
+                                                    </svg>
+                                                    <span>{{ $msg->text }}</span>
+                                                </div>
+                                                <p class="text-[9px] font-extrabold text-gray-450 tracking-wider uppercase">
+                                                    MENSAGEM AUTOMÁTICA DO SISTEMA - {{ $msg->created_at->format('d/m - H:i') }}
+                                                </p>
+                                            </div>
+                                        @endif
                                     @else
                                         <div class="group flex items-center {{ $isCurrentUser ? 'justify-end ml-auto' : 'justify-start mr-auto' }} gap-3 max-w-[85%] relative chat-message"
                                             data-message-id="{{ $msg->id }}">
@@ -2276,6 +2266,100 @@
         </div>
     </div>
 
+    <!-- Modal Abrir Ticket -->
+    <div id="open-ticket-modal"
+        class="fixed inset-0 z-[115] hidden bg-black/60 backdrop-blur-sm items-center justify-center p-4 select-none">
+        <div id="open-ticket-modal-content"
+            class="bg-white w-full max-w-[500px] rounded-[24px] shadow-2xl p-6 md:p-8 relative flex flex-col gap-5 transform scale-95 opacity-0 transition-all duration-300">
+            <!-- Botão Fechar (x) -->
+            <button type="button" onclick="closeOpenTicketModal()"
+                class="absolute top-5 right-5 text-gray-455 hover:text-gray-650 transition-colors focus:outline-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+                    stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+
+            <!-- Título -->
+            <h3 class="text-2xl font-bold tracking-tight text-[#DA291C] text-left"
+                style="font-family: 'AMX', sans-serif;">
+                Abrir ticket #ID <span id="open-ticket-id-display">{{ $activeSolicitation ? $activeSolicitation->ticket_number : '' }}</span>
+            </h3>
+
+            <!-- Formulário -->
+            <form id="open-ticket-form" class="flex flex-col gap-4 text-left m-0" onsubmit="event.preventDefault(); submitOpenTicket();">
+                <!-- Envio -->
+                <div class="flex flex-col gap-1.5">
+                    <label for="ticket-destination" class="block text-xs font-bold text-gray-600 uppercase tracking-wider"
+                        style="font-family: 'AMX', sans-serif;">Envio</label>
+                    <select id="ticket-destination" required
+                        class="w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-700 bg-white placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all font-semibold"
+                        style="font-family: 'AMX', sans-serif;">
+                        <option value="" disabled selected>Selecione a fila/setor e/ou pessoas</option>
+                        <optgroup label="Filas / Setores">
+                            @foreach($setores as $setor)
+                                <option value="Setor: {{ $setor['name'] }}">{{ $setor['name'] }} (Setor)</option>
+                            @endforeach
+                            @foreach($filas as $fila)
+                                <option value="Fila: {{ $fila['name'] }}">{{ $fila['name'] }} (Fila)</option>
+                                @if(!empty($fila['children']))
+                                    @foreach($fila['children'] as $child)
+                                        <option value="{{ $fila['name'] }}: {{ $child['name'] }}">&nbsp;&nbsp;&nbsp;&nbsp;↳ {{ $child['name'] }}</option>
+                                    @endforeach
+                                @endif
+                            @endforeach
+                        </optgroup>
+                        <optgroup label="Pessoas">
+                            @foreach($pessoas as $pessoa)
+                                <option value="Pessoa: {{ $pessoa->name }}">{{ $pessoa->name }}</option>
+                            @endforeach
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Título do ticket -->
+                <div class="flex flex-col gap-1.5">
+                    <input type="text" id="ticket-title" placeholder="Título do ticket" required
+                        class="w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all font-medium"
+                        style="font-family: 'AMX', sans-serif;">
+                </div>
+
+                <!-- Descrição -->
+                <div class="flex flex-col gap-1.5">
+                    <textarea id="ticket-description" placeholder="Descrição" rows="4" required
+                        class="w-full px-4 py-3 border border-gray-200 rounded-[12px] text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all font-medium resize-none"
+                        style="font-family: 'AMX', sans-serif;"></textarea>
+                </div>
+
+                <!-- Upload do arquivo -->
+                <div>
+                    <label for="ticket-file-input"
+                        class="w-full flex flex-col items-center justify-center py-4 px-6 border border-dashed border-gray-300 hover:border-[#DA291C] rounded-[12px] bg-gray-50 hover:bg-red-50/5 cursor-pointer transition-all select-none"
+                        style="border-style: dashed; border-width: 2px;">
+                        <span class="text-xs md:text-sm font-semibold text-gray-550" id="ticket-file-label-text">
+                            Arraste ou selecione um arquivo <span class="italic font-normal text-gray-400">(opcional)</span>
+                        </span>
+                        <input type="file" id="ticket-file-input" class="hidden" multiple onchange="handleTicketFileSelected(this)">
+                    </label>
+                    <div id="ticket-attached-files-container" class="hidden"></div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div class="flex flex-col gap-3 items-center mt-2">
+                    <button type="submit" id="btn-submit-open-ticket"
+                        class="w-full py-4 bg-[#DA291C] hover:bg-[#B31D14] text-white text-base font-bold rounded-xl shadow-md transition-all text-center select-none active:scale-[0.99] focus:outline-none"
+                        style="font-family: 'AMX', sans-serif;">
+                        Abrir ticket
+                    </button>
+                    <button type="button" onclick="closeOpenTicketModal()"
+                        class="text-sm font-bold text-gray-500 hover:text-gray-800 transition-colors py-1 cursor-pointer focus:outline-none">
+                        Cancelar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 @endsection
 
 @section('scripts')
@@ -2294,6 +2378,8 @@
         const activeSolicitationUserName = {{ \Illuminate\Support\Js::from($activeSolicitation?->user?->name ?? 'Cliente') }};
         const activeSolicitationTicket = {{ \Illuminate\Support\Js::from($activeSolicitation?->ticket_number ?? '') }};
         const activeSolicitationId = {{ \Illuminate\Support\Js::from($activeSolicitation?->id) }};
+        const activeSolicitationTitle = {{ \Illuminate\Support\Js::from($activeSolicitation?->title ?? '') }};
+        const activeSolicitationDescription = {{ \Illuminate\Support\Js::from($activeSolicitation?->description ?? '') }};
         const currentUserDisplayName = {{ \Illuminate\Support\Js::from(auth()->user()->name ?? 'Usuário') }};
         const currentUserEmail = {{ \Illuminate\Support\Js::from(auth()->user()->email ?? '') }};
         const AUTO_JOIN_STORAGE_KEY = 'prisma_auto_joined_videocalls_v1';
@@ -2436,9 +2522,53 @@
         }
 
         function transferTo(type, name) {
-            showToast(`Chamado transferido para ${type}: ${name}`);
+            if (!activeSolicitationId) {
+                showToast('Selecione um chamado para realizar a transferência.');
+                return;
+            }
+
             const dropdown = document.getElementById('transfer-dropdown');
             if (dropdown) dropdown.classList.add('hidden');
+
+            const destination = `${type}: ${name}`;
+            const title = activeSolicitationTitle;
+            const description = activeSolicitationDescription || 'Chamado transferido';
+
+            showToast(`Transferindo chamado para ${destination}...`);
+
+            const formData = new FormData();
+            formData.append('destination', destination);
+            formData.append('title', title);
+            formData.append('description', description);
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
+                || '{{ csrf_token() }}';
+
+            fetch(`/solicitations/${activeSolicitationId}/open-ticket`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json().then(data => ({ status: response.status, body: data })))
+            .then(({ status, body }) => {
+                if (status === 200 && body.success) {
+                    showToast(body.message || `Transferido com sucesso!`);
+                    
+                    // Redireciona para o index para atualizar a lista sem o chamado que foi transferido
+                    setTimeout(() => {
+                        window.location.href = "{{ auth()->user()->role === 'atendente' ? route('atendente.chat.index') : (auth()->user()->role === 'admin' ? route('admin.chat.index') : route('chat.index')) }}";
+                    }, 1000);
+                } else {
+                    showToast(body.message || 'Erro ao realizar a transferência.');
+                }
+            })
+            .catch(error => {
+                console.error(error);
+                showToast('Erro ao realizar a transferência.');
+            });
         }
 
         // Close transfer dropdown when clicking outside
@@ -4459,7 +4589,36 @@
                 if (msg.id > lastMessageId) lastMessageId = msg.id;
                 return;
             }
-            // === END VIDEOCALL CARD ===
+            // === INTERNAL SYSTEM MESSAGE ===
+            if (msg.type === 'internal') {
+                const currentUserRole = "{{ auth()->user()->role }}";
+                if (currentUserRole === 'atendente' || currentUserRole === 'admin') {
+                    wrapper.className = 'flex flex-col items-center justify-center text-center py-4 px-6 gap-1.5 chat-message animate-fade-in';
+                    wrapper.innerHTML = `
+                        <div class="flex items-center gap-2 text-gray-500 italic text-sm font-semibold justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-gray-400 flex-shrink-0">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path>
+                            </svg>
+                            <span>${msg.text}</span>
+                        </div>
+                        <p class="text-[9px] font-extrabold text-gray-450 tracking-wider uppercase">
+                            MENSAGEM AUTOMÁTICA DO SISTEMA - ${msg.time || ''}
+                        </p>
+                    `;
+                } else {
+                    return;
+                }
+
+                // Insert before typing indicator
+                const typingIndicatorInternal = document.getElementById('typing-indicator-wrapper');
+                if (typingIndicatorInternal) {
+                    container.insertBefore(wrapper, typingIndicatorInternal);
+                } else {
+                    container.appendChild(wrapper);
+                }
+                if (msg.id > lastMessageId) lastMessageId = msg.id;
+                return;
+            }
 
             const isCurrentUser = msg.is_user;
             const textClass = isCurrentUser ? 'text-white bg-[#DA291C] rounded-2xl rounded-tr-none' : 'bg-[#EDEDED] text-gray-800 rounded-2xl rounded-tl-none border border-transparent';
@@ -5024,16 +5183,11 @@
                             }
                         }
 
-                        // Sincroniza botões de videochamada
+                        // Sincroniza botões de videochamada - sempre visíveis
                         const btnVcAtendente = document.getElementById('btn-videocall-atendente');
                         const btnVcUser = document.getElementById('btn-videocall-user');
-                        if (data.solicitation_status === 'na_fila') {
-                            if (btnVcAtendente) btnVcAtendente.classList.add('hidden');
-                            if (btnVcUser) btnVcUser.classList.add('hidden');
-                        } else {
-                            if (btnVcAtendente) btnVcAtendente.classList.remove('hidden');
-                            if (btnVcUser) btnVcUser.classList.remove('hidden');
-                        }
+                        if (btnVcAtendente) btnVcAtendente.classList.remove('hidden');
+                        if (btnVcUser) btnVcUser.classList.remove('hidden');
 
                         updateClientClosureUI(data.solicitation_status);
 
@@ -5261,7 +5415,193 @@
             // Fechar ao clicar fora do conteúdo
             const modal = document.getElementById('end-call-modal');
             if (modal && !modal.classList.contains('hidden') && e.target === modal) closeEndCallModal();
+
+            // Fechar modal Abrir Ticket ao clicar fora
+            const ticketModal = document.getElementById('open-ticket-modal');
+            if (ticketModal && !ticketModal.classList.contains('hidden') && e.target === ticketModal) closeOpenTicketModal();
         });
+
+        // ---------- Open Ticket Modal (Attendant) ----------
+        let ticketAttachedFiles = [];
+
+        function openOpenTicketModal() {
+            if (!activeSolicitationId) {
+                showToast('Selecione um chamado ativo antes de abrir um ticket.');
+                return;
+            }
+
+            resetOpenTicketForm();
+
+            const modal = document.getElementById('open-ticket-modal');
+            const content = document.getElementById('open-ticket-modal-content');
+            if (!modal || !content) return;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+                content.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function closeOpenTicketModal() {
+            const modal = document.getElementById('open-ticket-modal');
+            const content = document.getElementById('open-ticket-modal-content');
+            if (!modal || !content) return;
+
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+            }, 250);
+        }
+
+        function resetOpenTicketForm() {
+            const form = document.getElementById('open-ticket-form');
+            if (form) form.reset();
+
+            ticketAttachedFiles = [];
+            renderTicketAttachedFiles();
+            updateTicketFileInputFiles();
+        }
+
+        function handleTicketFileSelected(input) {
+            if (input.files) {
+                for (let i = 0; i < input.files.length; i++) {
+                    ticketAttachedFiles.push(input.files[i]);
+                }
+            }
+            renderTicketAttachedFiles();
+            updateTicketFileInputFiles();
+        }
+
+        function removeTicketAttachedFile(index) {
+            ticketAttachedFiles.splice(index, 1);
+            renderTicketAttachedFiles();
+            updateTicketFileInputFiles();
+        }
+
+        function updateTicketFileInputFiles() {
+            const input = document.getElementById('ticket-file-input');
+            if (!input) return;
+            const dt = new DataTransfer();
+            ticketAttachedFiles.forEach(file => {
+                dt.items.add(file);
+            });
+            input.files = dt.files;
+        }
+
+        function renderTicketAttachedFiles() {
+            const container = document.getElementById('ticket-attached-files-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (ticketAttachedFiles.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            container.className = "flex flex-wrap gap-2 mt-3 justify-start";
+
+            ticketAttachedFiles.forEach((file, index) => {
+                const tag = document.createElement('div');
+                tag.className = "flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg bg-white text-xs font-bold text-gray-750 shadow-sm transition-all";
+                tag.style.fontFamily = "'AMX', sans-serif";
+
+                tag.innerHTML = `
+                    <svg class="w-3.5 h-3.5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
+                    <span class="truncate max-w-[150px] text-gray-650">${file.name}</span>
+                    <button type="button" onclick="removeTicketAttachedFile(${index})" class="text-gray-400 hover:text-red-500 transition-colors focus:outline-none ml-1 cursor-pointer">
+                        <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                `;
+                container.appendChild(tag);
+            });
+        }
+
+        function submitOpenTicket() {
+            if (!activeSolicitationId) {
+                showToast('Selecione um chamado ativo antes de abrir um ticket.');
+                return;
+            }
+
+            const destination = document.getElementById('ticket-destination').value;
+            const title = document.getElementById('ticket-title').value.trim();
+            const description = document.getElementById('ticket-description').value.trim();
+
+            if (!destination) {
+                showToast('Por favor, selecione um destino.');
+                return;
+            }
+            if (!title) {
+                showToast('Por favor, insira o título do ticket.');
+                return;
+            }
+            if (!description) {
+                showToast('Por favor, insira a descrição do ticket.');
+                return;
+            }
+
+            const submitBtn = document.getElementById('btn-submit-open-ticket');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = 'Enviando...';
+                submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            }
+
+            const formData = new FormData();
+            formData.append('destination', destination);
+            formData.append('title', title);
+            formData.append('description', description);
+            
+            ticketAttachedFiles.forEach(file => {
+                formData.append('files[]', file);
+            });
+
+            // Adiciona o token CSRF
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
+                || '{{ csrf_token() }}';
+
+            fetch(`/solicitations/${activeSolicitationId}/open-ticket`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json().then(data => ({ status: response.status, body: data })))
+            .then(({ status, body }) => {
+                if (status === 200 && body.success) {
+                    showToast(body.message || `Ticket #${body.ticket_number} cadastrado com sucesso!`);
+                    closeOpenTicketModal();
+                    
+                    // Redireciona para o index para atualizar a lista sem o chamado que foi transferido
+                    setTimeout(() => {
+                        window.location.href = "{{ auth()->user()->role === 'atendente' ? route('atendente.chat.index') : (auth()->user()->role === 'admin' ? route('admin.chat.index') : route('chat.index')) }}";
+                    }, 1000);
+                } else {
+                    showToast(body.message || body.error || 'Erro ao abrir o ticket.');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('Erro de conexão ao abrir o ticket.');
+            })
+            .finally(() => {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = 'Abrir ticket';
+                    submitBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+                }
+            });
+        }
     </script>
 
     {{-- Modal Encerrar Chamada - visual alinhado ao padrão do sistema (Checklist de Solução) --}}

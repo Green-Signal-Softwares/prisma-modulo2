@@ -50,8 +50,8 @@ class DatabaseSeeder extends Seeder
 
         $ap2 = \App\Models\AccessProfile::create([
             'name' => 'ATENDENTE N2',
-            'nivel_n1' => true,
-            'nivel_n2' => false,
+            'nivel_n1' => false,
+            'nivel_n2' => true,
             'fila' => true,
         ]);
 
@@ -141,6 +141,36 @@ class DatabaseSeeder extends Seeder
                 'password' => Hash::make('Senha123'),
                 'role' => 'atendente',
                 'access_profile_id' => $apPromocoes->id,
+                'phone' => '(31) 12345-6789',
+                'login' => 'F123456',
+                'status' => 'ativo',
+                'email_verified_at' => now(),
+            ]
+        );
+
+        // Usuário Atendente N2
+        User::updateOrCreate(
+            ['email' => 'lucia@claro.com.br'],
+            [
+                'name' => 'Lúcia M.',
+                'password' => Hash::make('Senha123'),
+                'role' => 'atendente',
+                'access_profile_id' => $ap2->id,
+                'phone' => '(31) 12345-6789',
+                'login' => 'F123456',
+                'status' => 'ativo',
+                'email_verified_at' => now(),
+            ]
+        );
+
+        // Usuário Atendente N1 + N2
+        User::updateOrCreate(
+            ['email' => 'roberto@claro.com.br'],
+            [
+                'name' => 'Roberto G.',
+                'password' => Hash::make('Senha123'),
+                'role' => 'atendente',
+                'access_profile_id' => $ap3->id,
                 'phone' => '(31) 12345-6789',
                 'login' => 'F123456',
                 'status' => 'ativo',
@@ -327,7 +357,7 @@ class DatabaseSeeder extends Seeder
                 $actRand = $activities[array_rand($activities)];
                 $typeRand = $types[array_rand($types)];
                 $pdvRand = $pdvs[array_rand($pdvs)];
-                
+
                 \App\Models\ActivityLog::create([
                     'activity' => $actRand,
                     'type' => $typeRand,

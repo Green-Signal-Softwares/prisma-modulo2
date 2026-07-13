@@ -11,6 +11,7 @@ use App\Models\Tag;
 use App\Models\AccessProfile;
 use App\Models\ActivityLog;
 use App\Models\TriageFlowConfig;
+use App\Models\Message;
 use App\Notifications\SolicitationNotification;
 
 use Illuminate\Http\Request;
@@ -95,7 +96,7 @@ class DashboardController extends Controller
         if ($request->filled('assunto')) {
             $query->where(function ($q) use ($request) {
                 $q->where('title', 'like', '%' . $request->assunto . '%')
-                  ->orWhere('description', 'like', '%' . $request->assunto . '%');
+                    ->orWhere('description', 'like', '%' . $request->assunto . '%');
             });
         }
 
@@ -115,7 +116,7 @@ class DashboardController extends Controller
                 'nao resolvida' => 'nao_resolvida',
                 'não resolvida' => 'nao_resolvida',
             ];
-            
+
             $normalizedInput = strtolower(trim($statusInput));
             if (isset($statusMap[$normalizedInput])) {
                 $query->where('status', $statusMap[$normalizedInput]);
@@ -162,6 +163,9 @@ class DashboardController extends Controller
         if ($request->filled('category')) {
             $description = "[" . $request->category . "] - " . $description;
         }
+        if ($request->filled('attendant_type')) {
+            $description .= "\n\nTipo de Atendimento: " . $request->attendant_type;
+        }
 
         $filePaths = [];
         if ($request->hasFile('files')) {
@@ -181,6 +185,14 @@ class DashboardController extends Controller
             'status' => 'na_fila',
             'ticket_number' => $ticketNumber,
             'file_path' => $filePaths,
+        ]);
+
+        // Cria mensagem automática de abertura de chamado para o histórico
+        Message::create([
+            'solicitation_id' => $solicitation->id,
+            'user_id' => auth()->id(),
+            'text' => "Chamado ID {$ticketNumber} aberto para atendimento.",
+            'type' => 'internal'
         ]);
 
         // Notifica todos os atendentes sobre o novo chamado na fila
@@ -231,6 +243,14 @@ class DashboardController extends Controller
         $solicitation->update([
             'status' => 'em_atendimento',
             'atendente_id' => auth()->id(),
+        ]);
+
+        // Cria mensagem automática de início de atendimento para o histórico
+        Message::create([
+            'solicitation_id' => $solicitation->id,
+            'user_id' => auth()->id(),
+            'text' => "Chamado ID {$solicitation->ticket_number} atribuído a você para atendimento.",
+            'type' => 'internal'
         ]);
 
         // Notifica o cliente que o chamado foi assumido
@@ -284,9 +304,44 @@ class DashboardController extends Controller
             'descricao' => trim($validated['descricao']),
         ]);
 
-        $solicitation->update([
+        $updateData = [
             'status' => $newStatus,
-        ]);
+        ];
+
+        if ($validated['solucao_aplicada'] === 'encaminhado') {
+            $enc = trim((string) ($validated['encaminhamento'] ?? ''));
+            if (str_starts_with($enc, 'Pessoa: ')) {
+                $personName = substr($enc, strlen('Pessoa: '));
+                $targetUser = User::where('role', 'atendente')
+                    ->where('name', $personName)
+                    ->first();
+                if ($targetUser) {
+                    $updateData['atendente_id'] = $targetUser->id;
+                    
+                    // Cria log do sistema de transferência no chat
+                    Message::create([
+                        'solicitation_id' => $solicitation->id,
+                        'user_id' => auth()->id(),
+                        'text' => "Chamado ID {$solicitation->ticket_number} transferido e atribuído a {$targetUser->name} para atendimento.",
+                        'type' => 'internal'
+                    ]);
+                }
+            } else {
+                $updateData['atendente_id'] = null;
+                
+                // Cria log do sistema de transferência no chat
+                Message::create([
+                    'solicitation_id' => $solicitation->id,
+                    'user_id' => auth()->id(),
+                    'text' => "Chamado ID {$solicitation->ticket_number} transferido para a fila: {$enc}.",
+                    'type' => 'internal'
+                ]);
+            }
+
+            ActivityLog::writeLog('Transferência', 'CHAMADO', "Transferiu o chamado #{$solicitation->ticket_number} para {$enc}");
+        }
+
+        $solicitation->update($updateData);
 
         // Notifica o cliente que o status do chamado foi atualizado
         try {
@@ -962,8 +1017,8 @@ class DashboardController extends Controller
             $callback = function () use ($query) {
                 $file = fopen('php://output', 'w');
                 // UTF-8 BOM for Excel compatibility
-                fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-                
+                fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
                 fputcsv($file, ['Data/Hora', 'Atividade', 'Tipo', 'Nome', 'PDV', 'Detalhes']);
 
                 $query->orderBy('created_at', 'desc')->chunk(100, function ($logs) use ($file) {
@@ -1005,5 +1060,126 @@ class DashboardController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Show User Central profile view.
+     */
+    public function centralUsuario()
+    {
+        $user = auth()->user();
+        return view('profile.central', compact('user'));
+    }
+
+    /**
+     * Update user profile information.
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'login' => 'nullable|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email,' . $user->id,
+            'current_password' => 'nullable|string',
+            'new_password' => 'nullable|string|min:6|confirmed',
+        ]);
+
+        $user->name = $request->input('name');
+        if ($request->has('phone')) {
+            $user->phone = $request->input('phone');
+        }
+        if ($request->has('login')) {
+            $user->login = $request->input('login');
+        }
+        if ($request->has('email')) {
+            $user->email = $request->input('email');
+        }
+
+        // Handle password update if fields are filled
+        if ($request->filled('current_password') && $request->filled('new_password')) {
+            if (!\Illuminate\Support\Facades\Hash::check($request->current_password, $user->password)) {
+                return back()->withErrors(['current_password' => 'A senha atual está incorreta.']);
+            }
+            $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
+        }
+
+        $user->save();
+
+        return redirect()->route('profile.central')->with('success', 'Informações atualizadas com sucesso!');
+    }
+
+    public function systemNotifications()
+    {
+        $notifications = \App\Models\SystemNotification::orderBy('created_at', 'desc')->get();
+        return view('admin.notifications.index', compact('notifications'));
+    }
+
+    public function storeSystemNotification(Request $request)
+    {
+        $validated = $request->validate([
+            'send_to' => 'required|string',
+            'type' => 'required|string|in:push,system,email',
+            'status' => 'nullable|string|in:active,inactive',
+            'start_date' => 'required|date',
+            'start_time' => 'required|string',
+            'end_date' => 'required|date',
+            'end_time' => 'required|string',
+            'title' => 'required|string|max:255',
+            'content' => 'required|string',
+        ]);
+
+        $startAt = \Carbon\Carbon::parse($validated['start_date'] . ' ' . $validated['start_time'], 'America/Sao_Paulo')->setTimezone('UTC');
+        $endAt = \Carbon\Carbon::parse($validated['end_date'] . ' ' . $validated['end_time'], 'America/Sao_Paulo')->setTimezone('UTC');
+
+        \App\Models\SystemNotification::create([
+            'send_to' => $validated['send_to'],
+            'type' => $validated['type'],
+            'status' => $validated['status'] ?? 'active',
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'title' => $validated['title'],
+            'content' => $validated['content'],
+        ]);
+
+        return redirect()->route('admin.notifications.index')->with('success', 'Notificação enviada/programada com sucesso!');
+    }
+
+    public function updateSystemNotification(Request $request, \App\Models\SystemNotification $notification)
+    {
+        $validated = $request->validate([
+            'send_to' => 'required|string',
+            'type' => 'required|string|in:push,system,email',
+            'status' => 'nullable|string|in:active,inactive',
+            'start_date' => 'required|date',
+            'start_time' => 'required|string',
+            'end_date' => 'required|date',
+            'end_time' => 'required|string',
+            'title' => 'required|string|max:255',
+            'content' => 'required|string',
+        ]);
+
+        $startAt = \Carbon\Carbon::parse($validated['start_date'] . ' ' . $validated['start_time'], 'America/Sao_Paulo')->setTimezone('UTC');
+        $endAt = \Carbon\Carbon::parse($validated['end_date'] . ' ' . $validated['end_time'], 'America/Sao_Paulo')->setTimezone('UTC');
+
+        $notification->update([
+            'send_to' => $validated['send_to'],
+            'type' => $validated['type'],
+            'status' => $validated['status'] ?? 'active',
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'title' => $validated['title'],
+            'content' => $validated['content'],
+        ]);
+
+        return redirect()->route('admin.notifications.index')->with('success', 'Notificação atualizada com sucesso!');
+    }
+
+    public function destroySystemNotification(\App\Models\SystemNotification $notification)
+    {
+        $notification->delete();
+        return redirect()->route('admin.notifications.index')->with('success', 'Notificação excluída com sucesso!');
     }
 }

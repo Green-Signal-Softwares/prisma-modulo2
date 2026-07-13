@@ -83,6 +83,22 @@
 </head>
 
 <body class="bg-[#F8F9FA] min-h-screen antialiased select-none">
+    @php
+        $now = \Carbon\Carbon::now();
+        $activeSystemNotifications = collect();
+        $activePushNotifications = collect();
+        if (Auth::check()) {
+            $user = Auth::user();
+            $activeNotifications = \App\Models\SystemNotification::where('status', 'active')
+                ->where('start_at', '<=', $now)
+                ->where('end_at', '>=', $now)
+                ->whereIn('send_to', ['all', $user->role])
+                ->get();
+                
+            $activeSystemNotifications = $activeNotifications->where('type', 'system');
+            $activePushNotifications = $activeNotifications->where('type', 'push');
+        }
+    @endphp
     <script>
         if (localStorage.getItem('sidebar-collapsed') === 'true') {
             document.body.classList.add('sidebar-collapsed');
@@ -288,8 +304,8 @@
                 </a>
 
                 <!-- Configurações Link -->
-                <a href="{{ route('users.index') }}"
-                    class="flex items-center gap-3 px-3 py-3 rounded-2xl transition-all text-sm font-semibold hover:bg-white/10 text-white/80">
+                <a href="{{ route('profile.central', ['tab' => 'configuracoes']) }}"
+                    class="flex items-center gap-3 px-3 py-3 rounded-2xl transition-all text-sm font-semibold {{ request()->get('tab') === 'configuracoes' ? 'bg-white/15 text-white font-bold' : 'hover:bg-white/10 text-white/80' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                         stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -311,8 +327,8 @@
                 </a>
             @else
                 <!-- Configurações Link -->
-                <a href="{{ route('users.index') }}"
-                    class="flex items-center gap-3 px-3 py-3 rounded-2xl transition-all text-sm font-semibold {{ str_starts_with(Route::currentRouteName(), 'users') ? 'bg-white/15 text-white' : 'hover:bg-white/10 text-white/80' }}">
+                <a href="{{ route('profile.central', ['tab' => 'configuracoes']) }}"
+                    class="flex items-center gap-3 px-3 py-3 rounded-2xl transition-all text-sm font-semibold {{ request()->get('tab') === 'configuracoes' ? 'bg-white/15 text-white font-bold' : 'hover:bg-white/10 text-white/80' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                         stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -475,23 +491,83 @@
                     </button>
 
                     <div id="profile-menu"
-                        class="absolute right-0 top-12 w-48 bg-white border border-gray-100 rounded-xl shadow-lg py-1 hidden z-50">
+                        class="absolute right-0 top-12 w-64 bg-white border border-gray-100 rounded-[20px] shadow-xl py-4 hidden z-50 flex-col">
+                        <!-- Top Info: User name and Avatar -->
+                        <div class="flex items-center gap-3 px-5 pb-3">
+                            <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 overflow-hidden flex-shrink-0 border border-gray-200">
+                                <svg class="w-5 h-5 text-gray-450" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="flex flex-col text-left">
+                                <span class="text-sm font-bold text-gray-800">{{ Auth::user()->name ?? 'Usuário' }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Divider line -->
+                        <div class="border-b border-gray-100 mb-2 mx-5"></div>
+
+                        <!-- Menu links -->
+                        <a href="{{ route('profile.central') }}" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                            Meus dados
+                        </a>
+                        
+                        <a href="{{ route('profile.central', ['tab' => 'password']) }}" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                            Editar senha
+                        </a>
+
+                        @if(Auth::check() && Auth::user()->role === 'admin')
+                            <a href="{{ route('users.index') }}" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                                Gestão de Usuários
+                            </a>
+                            <a href="{{ route('admin.notifications.index') }}" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                                Notificações
+                            </a>
+                        @else
+                            <a href="#" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                                Notificações
+                            </a>
+                        @endif
+
+                        <a href="{{ route('profile.central', ['tab' => 'configuracoes']) }}" class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                            Configurações
+                        </a>
+
                         <form action="{{ route('logout') }}" method="POST" class="m-0">
                             @csrf
                             <button type="submit"
-                                class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                    stroke-width="1.8" stroke="currentColor" class="w-4 h-4">
-                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                        d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
-                                </svg>
-                                <span>Sair</span>
+                                class="w-full text-left px-5 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-[#DA291C] transition-colors flex items-center gap-2 cursor-pointer font-medium">
+                                Sair
                             </button>
                         </form>
                     </div>
                 </div>
             </div>
         </header>
+
+        <!-- System Notification Banner -->
+        @if(count($activeSystemNotifications) > 0)
+            @php
+                $systemNotif = $activeSystemNotifications->first();
+            @endphp
+            <div id="system-notification-banner" class="w-full bg-[#F06B1E] text-white py-3.5 px-6 flex items-center justify-between text-[11px] font-extrabold uppercase tracking-wider select-none relative transition-all">
+                <div class="flex-1 text-center">
+                    ATENÇÃO: {{ $systemNotif->content }}
+                </div>
+                <button onclick="closeSystemNotificationBanner()" class="text-white hover:text-orange-250 transition-colors cursor-pointer text-lg font-bold ml-4 leading-none">
+                    &times;
+                </button>
+            </div>
+            <script>
+                function closeSystemNotificationBanner() {
+                    document.getElementById('system-notification-banner').style.display = 'none';
+                    sessionStorage.setItem('dismissed_system_notification_{{ $systemNotif->id }}', 'true');
+                }
+                if (sessionStorage.getItem('dismissed_system_notification_{{ $systemNotif->id }}')) {
+                    document.getElementById('system-notification-banner').style.display = 'none';
+                }
+            </script>
+        @endif
 
         <!-- Conteúdo Principal -->
         <main class="flex-1 flex flex-col p-6 md:p-8">
@@ -1117,6 +1193,50 @@
             }
         }
     </script>
+    <!-- Push Notification Modal -->
+    @if(count($activePushNotifications) > 0)
+        @php
+            $pushNotif = $activePushNotifications->first();
+        @endphp
+        <div id="push-notification-modal" class="fixed inset-0 z-[110] flex items-center justify-center select-none hidden">
+            <!-- Backdrop -->
+            <div class="fixed inset-0 bg-black/60 backdrop-blur-xs" onclick="closePushNotificationModal()"></div>
+            <!-- Modal Body -->
+            <div class="relative bg-white rounded-[24px] w-full max-w-md p-8 shadow-2xl border border-gray-100 mx-4 z-10 flex flex-col gap-4 transform transition-all duration-300">
+                <!-- Title Row -->
+                <div class="flex items-center gap-2">
+                    <!-- Red Bell SVG -->
+                    <svg class="w-6 h-6 text-[#DA291C]" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                    </svg>
+                    <h3 class="text-lg font-bold text-gray-900" style="font-family: 'AMX', sans-serif;">
+                        Notificação Push
+                    </h3>
+                </div>
+                <!-- Content -->
+                <p class="text-gray-500 text-sm leading-relaxed whitespace-pre-line">
+                    {{ $pushNotif->content }}
+                </p>
+                <!-- Actions -->
+                <div class="mt-2">
+                    <button onclick="closePushNotificationModal()" 
+                        class="w-full bg-[#E8807A] hover:bg-[#e06c65] text-white font-bold py-3 px-4 rounded-[14px] transition-all cursor-pointer text-center select-none shadow-sm">
+                        Ok
+                    </button>
+                </div>
+            </div>
+        </div>
+        <script>
+            function closePushNotificationModal() {
+                document.getElementById('push-notification-modal').classList.add('hidden');
+                sessionStorage.setItem('dismissed_push_notification_{{ $pushNotif->id }}', 'true');
+            }
+            if (!sessionStorage.getItem('dismissed_push_notification_{{ $pushNotif->id }}')) {
+                document.getElementById('push-notification-modal').classList.remove('hidden');
+            }
+        </script>
+    @endif
+
     @yield('scripts')
 </body>
 

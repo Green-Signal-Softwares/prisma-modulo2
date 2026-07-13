@@ -449,5 +449,52 @@ class ChatTest extends TestCase
         $jwtToken = explode('jwt=', $url)[1];
         $this->assertNotEmpty($jwtToken);
     }
+
+    public function test_agent_can_transfer_ticket_to_another_agent()
+    {
+        $this->solicitation->update(['atendente_id' => $this->agent->id]);
+        $targetAgent = User::factory()->create(['role' => 'atendente', 'name' => 'MARIA ATENDENTE']);
+
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('atendente.solicitations.finalizar', $this->solicitation), [
+                'problema_identificado' => 'sim',
+                'solucao_aplicada' => 'encaminhado',
+                'encaminhamento' => 'Pessoa: MARIA ATENDENTE',
+                'descricao' => 'Transferindo chamado para Maria'
+            ]);
+
+        $response->assertStatus(200);
+        $this->solicitation->refresh();
+        $this->assertEquals('em_replica', $this->solicitation->status);
+        $this->assertEquals($targetAgent->id, $this->solicitation->atendente_id);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'activity' => 'Transferência',
+            'type' => 'CHAMADO'
+        ]);
+    }
+
+    public function test_agent_can_transfer_ticket_to_sector_or_queue()
+    {
+        $this->solicitation->update(['atendente_id' => $this->agent->id]);
+
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('atendente.solicitations.finalizar', $this->solicitation), [
+                'problema_identificado' => 'sim',
+                'solucao_aplicada' => 'encaminhado',
+                'encaminhamento' => 'Setor: Suporte Técnico',
+                'descricao' => 'Transferindo para o setor suporte'
+            ]);
+
+        $response->assertStatus(200);
+        $this->solicitation->refresh();
+        $this->assertEquals('em_replica', $this->solicitation->status);
+        $this->assertNull($this->solicitation->atendente_id);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'activity' => 'Transferência',
+            'type' => 'CHAMADO'
+        ]);
+    }
 }
 

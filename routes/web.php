@@ -33,6 +33,7 @@ Route::middleware(['auth'])->group(function () {
 
     // Rotas de Mensagens (Comum para Clientes e Atendentes)
     Route::post('/solicitations/{solicitation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
+    Route::post('/solicitations/{solicitation}/open-ticket', [ChatController::class, 'openTicket'])->name('chat.solicitations.open-ticket');
     Route::get('/solicitations/{solicitation}/messages/updates', [ChatController::class, 'getUpdates'])->name('chat.messages.updates');
     Route::post('/messages/{message}/react', [ChatController::class, 'toggleReaction'])->name('chat.messages.react');
     Route::put('/messages/{message}', [ChatController::class, 'editMessage'])->name('chat.messages.edit');
@@ -42,6 +43,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/videocall/initiate', [VideoCallController::class, 'initiateCall'])->name('videocall.initiate');
     Route::post('/videocall/{message}/end', [VideoCallController::class, 'endCall'])->name('videocall.end');
     Route::get('/videocall/{message}/join', [VideoCallController::class, 'joinCall'])->name('videocall.join');
+
+    // Central do usuário
+    Route::get('/central-usuario', [DashboardController::class, 'centralUsuario'])->name('profile.central');
+    Route::post('/central-usuario/update', [DashboardController::class, 'updateProfile'])->name('profile.update');
 
     // Rotas de Cliente (Apenas role: user)
     Route::middleware(['role:user'])->group(function () {
@@ -78,6 +83,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/gestao-atendimento/salvar', [DashboardController::class, 'saveTriageFlow'])->name('gestao-atendimento.save');
         Route::get('/presets-globais', [DashboardController::class, 'presetsGlobais'])->name('presets-globais');
         Route::get('/log-atividades', [DashboardController::class, 'logAtividades'])->name('log-atividades');
+        Route::get('/notifications', [DashboardController::class, 'systemNotifications'])->name('notifications.index');
+        Route::post('/notifications', [DashboardController::class, 'storeSystemNotification'])->name('notifications.store');
+        Route::put('/notifications/{notification}', [DashboardController::class, 'updateSystemNotification'])->name('notifications.update');
+        Route::delete('/notifications/{notification}', [DashboardController::class, 'destroySystemNotification'])->name('notifications.destroy');
 
         Route::post('/presets', [DashboardController::class, 'storePreset'])->name('presets.store');
         Route::put('/presets/{preset}', [DashboardController::class, 'updatePreset'])->name('presets.update');

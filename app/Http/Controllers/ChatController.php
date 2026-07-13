@@ -6,6 +6,9 @@ use App\Models\Solicitation;
 use App\Models\Message;
 use App\Models\Preset;
 use App\Models\Tag;
+use App\Models\User;
+use App\Models\ActivityLog;
+use App\Models\TriageFlowConfig;
 use App\Notifications\SolicitationNotification;
 use Illuminate\Http\Request;
 
@@ -17,9 +20,35 @@ class ChatController extends Controller
     public function index($id = null)
     {
         if (in_array(auth()->user()->role, ['atendente', 'admin'])) {
-            $solicitations = Solicitation::withCount(['messages as unread_messages_count' => function ($query) {
+            $user = auth()->user();
+            $query = Solicitation::withCount(['messages as unread_messages_count' => function ($query) {
                 $query->where('user_id', '!=', auth()->id())->whereNull('read_at');
-            }])->orderBy('created_at', 'desc')->get();
+            }]);
+
+            if ($user->role === 'atendente') {
+                $query->where(function ($q) use ($user) {
+                    // 1. Chamados na Fila (aguardando atendimento)
+                    $q->where(function ($sub) use ($user) {
+                        $sub->where('status', 'na_fila');
+                        
+                        // Só pode visualizar se não estiver com atendente ou se for o atendente atribuído
+                        $sub->where(function ($sq) use ($user) {
+                            $sq->whereNull('atendente_id')
+                               ->orWhere('atendente_id', $user->id);
+                        });
+
+                        // Restringe por N1/N2
+                        $this->applyQueueTypeFilterForAttendant($sub);
+                    })
+                    // 2. Chamados em atendimento atribuídos ao atendente logado
+                    ->orWhere(function ($sub) use ($user) {
+                        $sub->where('atendente_id', $user->id)
+                            ->whereNotIn('status', ['resolvida', 'finalizada', 'cancelada']);
+                    });
+                });
+            }
+
+            $solicitations = $query->orderBy('created_at', 'desc')->get();
         } else {
             $solicitations = Solicitation::where('user_id', auth()->id())
                 ->withCount(['messages as unread_messages_count' => function ($query) {
@@ -37,14 +66,21 @@ class ChatController extends Controller
         }
 
         if ($activeSolicitation) {
-            // Carrega mensagens e atendente do banco de dados
-            $activeSolicitation->load(['messages.user', 'messages.parent.user', 'atendente', 'evaluations', 'tag']);
+            // Carrega mensagens e atendente do banco de dados com filtro de mensagens internas para clientes
+            $activeSolicitation->load(['messages' => function ($query) {
+                if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+                    $query->where('type', '!=', 'internal');
+                }
+            }, 'messages.user', 'messages.parent.user', 'atendente', 'evaluations', 'tag']);
             
             // Marca mensagens do outro participante como lidas
-            $activeSolicitation->messages()
+            $readQuery = $activeSolicitation->messages()
                 ->where('user_id', '!=', auth()->id())
-                ->whereNull('read_at')
-                ->update(['read_at' => now()]);
+                ->whereNull('read_at');
+            if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+                $readQuery->where('type', '!=', 'internal');
+            }
+            $readQuery->update(['read_at' => now()]);
         }
 
         // Calcula posição na fila (apenas para cliente)
@@ -174,22 +210,33 @@ class ChatController extends Controller
         }
 
         // Busca novas mensagens criadas após o last_id
-        $newMessages = $solicitation->messages()
+        $newMessagesQuery = $solicitation->messages()
             ->with(['user', 'parent.user'])
-            ->where('id', '>', $lastId)
-            ->orderBy('created_at', 'asc')
-            ->get();
+            ->where('id', '>', $lastId);
+
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            $newMessagesQuery->where('type', '!=', 'internal');
+        }
+
+        $newMessages = $newMessagesQuery->orderBy('created_at', 'asc')->get();
 
         // Marcar mensagens recebidas como lidas
         if ($newMessages->isNotEmpty()) {
-            $solicitation->messages()
+            $readQuery = $solicitation->messages()
                 ->where('user_id', '!=', auth()->id())
-                ->whereNull('read_at')
-                ->update(['read_at' => now()]);
+                ->whereNull('read_at');
+            if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+                $readQuery->where('type', '!=', 'internal');
+            }
+            $readQuery->update(['read_at' => now()]);
         }
 
         // Monta o estado atualizado de todas as mensagens
-        $allMessages = $solicitation->messages()->get();
+        $allMessagesQuery = $solicitation->messages();
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            $allMessagesQuery->where('type', '!=', 'internal');
+        }
+        $allMessages = $allMessagesQuery->get();
         $updatedStates = [];
         foreach ($allMessages as $msg) {
             $formattedReactions = [];
@@ -339,7 +386,15 @@ class ChatController extends Controller
             'file_type' => $msg->file_path ? $this->getFileType($msg->file_path) : null,
             'sender' => strtoupper($msg->user->name),
             'sender_id' => $msg->user_id,
-            'is_user' => $msg->user_id === auth()->id(),
+            'is_user' => (function() use ($msg) {
+                $currentUserRole = auth()->user()->role;
+                $msgSenderRole = $msg->user ? $msg->user->role : 'system';
+                if (in_array($currentUserRole, ['atendente', 'admin'], true)) {
+                    return in_array($msgSenderRole, ['atendente', 'admin'], true);
+                } else {
+                    return ($msgSenderRole === 'user');
+                }
+            })(),
             'time' => $msg->created_at->format('d/m - H:i') . ($msg->updated_at->gt($msg->created_at) ? ' (EDITADA)' : ''),
             'parent' => $msg->parent ? [
                 'id' => $msg->parent->id,
@@ -361,5 +416,265 @@ class ChatController extends Controller
             return 'image';
         }
         return 'document';
+    }
+
+    /**
+     * Abre um ticket/transferência associado a um chamado ativo.
+     */
+    public function openTicket(Request $request, Solicitation $solicitation)
+    {
+        // Apenas atendentes e admins podem abrir ticket
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            return response()->json(['success' => false, 'message' => 'Não autorizado.'], 403);
+        }
+
+        $request->validate([
+            'destination' => 'required|string|max:255',
+            'title' => 'required|string|max:255',
+            'description' => 'required|string|max:5000',
+            'files.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,zip,txt|max:10240',
+        ]);
+
+        $destination = $request->input('destination');
+        $title = $request->input('title');
+        $description = $request->input('description');
+
+        $targetAttendantId = null;
+        $attendantType = null;
+
+        if (str_starts_with($destination, 'Pessoa: ')) {
+            $personName = substr($destination, strlen('Pessoa: '));
+            $targetUser = User::with('accessProfile')
+                ->where('role', 'atendente')
+                ->where('name', $personName)
+                ->first();
+            if ($targetUser) {
+                $targetAttendantId = $targetUser->id;
+                if ($targetUser->accessProfile) {
+                    $n1 = (bool) $targetUser->accessProfile->nivel_n1;
+                    $n2 = (bool) $targetUser->accessProfile->nivel_n2;
+                    if ($n1 && $n2) {
+                        $attendantType = 'N1/N2';
+                    } elseif ($n1) {
+                        $attendantType = 'N1';
+                    } elseif ($n2) {
+                        $attendantType = 'N2';
+                    }
+                }
+            }
+        } else {
+            // Sector or Fila. Let's find the matching node in TriageFlowConfig.
+            $parts = explode(': ', $destination);
+            $targetName = count($parts) > 1 ? end($parts) : $destination;
+
+            // Search in TriageFlowConfig
+            $config = TriageFlowConfig::first();
+            if ($config && is_array($config->data)) {
+                $foundNode = null;
+                $searchNode = function($nodes) use (&$searchNode, &$foundNode, $targetName) {
+                    foreach ($nodes as $node) {
+                        if (($node['name'] ?? '') === $targetName) {
+                            $foundNode = $node;
+                            return;
+                        }
+                        if (!empty($node['children'])) {
+                            $searchNode($node['children']);
+                            if ($foundNode) return;
+                        }
+                    }
+                };
+                $searchNode($config->data);
+
+                if ($foundNode) {
+                    $n1 = !empty($foundNode['n1']);
+                    $n2 = !empty($foundNode['n2']);
+                    if ($n1 && $n2) {
+                        $attendantType = 'N1/N2';
+                    } elseif ($n1) {
+                        $attendantType = 'N1';
+                    } elseif ($n2) {
+                        $attendantType = 'N2';
+                    }
+                }
+            }
+        }
+
+        // Processar upload de novos arquivos se houver
+        $filePaths = [];
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                if ($file->isValid()) {
+                    $filePaths[] = $file->store('solicitations', 'public');
+                }
+            }
+        }
+
+        // Leva junto os arquivos anexados à solicitação original
+        $originalFiles = is_array($solicitation->file_path) ? $solicitation->file_path : [];
+        $filePaths = array_merge($originalFiles, $filePaths);
+
+        // Gera novo número de ticket único de 9 dígitos
+        $ticketNumber = str_pad(random_int(100000000, 999999999), 9, '0', STR_PAD_LEFT);
+
+        // Prepara a descrição do novo chamado, incluindo o contexto completo da solicitação de origem
+        $formattedDescription = "[" . $destination . "] " . $description;
+        $formattedDescription .= "\n\n--- Contexto do Chamado de Origem (#" . $solicitation->ticket_number . ") ---";
+        $formattedDescription .= "\nTítulo Original: " . $solicitation->title;
+        $formattedDescription .= "\nDescrição Original: " . $solicitation->description;
+
+        if ($attendantType) {
+            $formattedDescription .= "\n\nTipo de Atendimento: " . $attendantType;
+        }
+
+        // Cria a nova solicitação
+        $newSolicitation = Solicitation::create([
+            'user_id' => $solicitation->user_id, // pertence ao mesmo cliente
+            'atendente_id' => $targetAttendantId,
+            'title' => $title,
+            'description' => $formattedDescription,
+            'status' => 'na_fila', // status inicial na fila
+            'ticket_number' => $ticketNumber,
+            'file_path' => $filePaths,
+        ]);
+
+        // Copia todo o histórico de mensagens do chamado original para o novo chamado (exclui mensagens do sistema para evitar duplicação de logs antigos)
+        $originalMessages = Message::where('solicitation_id', $solicitation->id)
+            ->where('type', '!=', 'internal')
+            ->orderBy('id', 'asc')
+            ->get();
+        $messageIdMapping = [];
+        foreach ($originalMessages as $msg) {
+            $newParentId = null;
+            if ($msg->parent_id && isset($messageIdMapping[$msg->parent_id])) {
+                $newParentId = $messageIdMapping[$msg->parent_id];
+            }
+
+            $newMsg = Message::create([
+                'solicitation_id' => $newSolicitation->id,
+                'user_id' => $msg->user_id,
+                'text' => $msg->text,
+                'file_path' => $msg->file_path,
+                'file_name' => $msg->file_name,
+                'parent_id' => $newParentId,
+                'type' => $msg->type,
+                'metadata' => $msg->metadata,
+                'reactions' => $msg->reactions,
+                'read_at' => $msg->read_at,
+            ]);
+
+            $messageIdMapping[$msg->id] = $newMsg->id;
+        }
+
+        // Adiciona uma mensagem informativa na nova solicitação indicando a importação do histórico
+        Message::create([
+            'solicitation_id' => $newSolicitation->id,
+            'user_id' => auth()->id(),
+            'text' => "Histórico de atendimento importado do chamado de origem #{$solicitation->ticket_number}.",
+            'type' => 'internal'
+        ]);
+
+        if ($targetAttendantId) {
+            $targetUser = User::find($targetAttendantId);
+            $targetName = $targetUser ? $targetUser->name : 'atendente';
+            Message::create([
+                'solicitation_id' => $newSolicitation->id,
+                'user_id' => auth()->id(),
+                'text' => "Chamado ID {$ticketNumber} transferido e atribuído a {$targetName} para atendimento.",
+                'type' => 'internal'
+            ]);
+        } else {
+            Message::create([
+                'solicitation_id' => $newSolicitation->id,
+                'user_id' => auth()->id(),
+                'text' => "Chamado ID {$ticketNumber} transferido para a fila: {$destination}.",
+                'type' => 'internal'
+            ]);
+        }
+
+        // Cria uma mensagem do sistema no chat do chamado original para registrar a transferência/abertura do ticket
+        Message::create([
+            'solicitation_id' => $solicitation->id,
+            'user_id' => auth()->id(),
+            'text' => "Novo ticket #{$ticketNumber} aberto e encaminhado para: {$destination}.",
+            'type' => 'internal'
+        ]);
+
+        // Salva logs de atividade
+        ActivityLog::writeLog(
+            'Transferência',
+            'CHAMADO',
+            "Abriu novo ticket #{$ticketNumber} a partir do chamado #{$solicitation->ticket_number} encaminhado para {$destination}"
+        );
+
+        // Marca o chamado original como resolvido para que saia do fluxo ativo do atendente que o transferiu
+        $solicitation->update([
+            'status' => 'resolvida',
+        ]);
+
+        // Se o destino for uma pessoa específica, notificar
+        try {
+            if ($targetAttendantId) {
+                $targetUser = User::find($targetAttendantId);
+                if ($targetUser) {
+                    $notifTitle = 'Novo ticket atribuído';
+                    $notifMessageText = 'O ticket #' . $ticketNumber . ' foi encaminhado diretamente para você.';
+                    $targetUser->notify(new SolicitationNotification($notifTitle, $notifMessageText, $newSolicitation->id, 'novo_chamado'));
+                }
+            } else {
+                // Notifica atendentes no geral
+                $atendentes = User::where('role', 'atendente')->get();
+                $notifTitle = 'Nova demanda na fila';
+                $notifMessageText = 'O chamado #' . $ticketNumber . ' está aguardando atendimento na fila.';
+                foreach ($atendentes as $atendente) {
+                    $atendente->notify(new SolicitationNotification($notifTitle, $notifMessageText, $newSolicitation->id, 'novo_chamado'));
+                }
+            }
+        } catch (\Exception $e) {
+            // Silencia
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ticket cadastrado com sucesso!',
+            'ticket_number' => $ticketNumber,
+            'id' => $newSolicitation->id
+        ]);
+    }
+
+    /**
+     * Restringe a visibilidade da fila para o atendente logado no chat.
+     */
+    private function applyQueueTypeFilterForAttendant($query): void
+    {
+        $user = auth()->user();
+        if (!$user || $user->role !== 'atendente') {
+            return;
+        }
+
+        $profile = $user->accessProfile;
+        if (!$profile) {
+            return;
+        }
+
+        $canN1 = (bool) $profile->nivel_n1;
+        $canN2 = (bool) $profile->nivel_n2;
+
+        if ($canN1 && $canN2) {
+            return;
+        }
+
+        $query->where(function ($typeMatch) use ($canN1, $canN2) {
+            // Compatibilidade com chamados sem tipo de atendimento
+            $typeMatch->where('description', 'not like', '%Tipo de Atendimento:%')
+                ->orWhere('description', 'like', '%Tipo de Atendimento: N1/N2%');
+
+            if ($canN1) {
+                $typeMatch->orWhere('description', 'like', '%Tipo de Atendimento: N1%');
+            }
+
+            if ($canN2) {
+                $typeMatch->orWhere('description', 'like', '%Tipo de Atendimento: N2%');
+            }
+        });
     }
 }
