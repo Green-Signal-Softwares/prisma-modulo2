@@ -15,6 +15,7 @@ class SystemNotification extends Model
         'status',
         'start_at',
         'end_at',
+        'sent_at',
         'title',
         'content',
     ];
@@ -22,5 +23,6 @@ class SystemNotification extends Model
     protected $casts = [
         'start_at' => 'datetime',
         'end_at' => 'datetime',
+        'sent_at' => 'datetime',
     ];
 }

@@ -5,9 +5,16 @@
 @section('content')
     <!-- Breadcrumbs & Greeting -->
     <div class="mb-6">
-        <div class="text-xs text-gray-500 mb-1">
-            <span>Claro Prisma</span> &gt; <span class="font-medium text-gray-700">Home</span>
-        </div>
+        @php
+            $homeRoute = auth()->check() && auth()->user()->role === 'admin'
+                ? route('admin.dashboard')
+                : (auth()->check() && auth()->user()->role === 'atendente' ? route('atendente.dashboard') : route('dashboard'));
+        @endphp
+        <nav aria-label="breadcrumb" class="flex items-center gap-1.5 mb-1 select-none">
+            <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+            <span class="breadcrumb breadcrumb-separator">&gt;</span>
+            <span class="breadcrumb breadcrumb-current">Home</span>
+        </nav>
         <h1 class="text-3xl font-bold text-[#A01724]">Bom dia, {{ Auth::user()->name ?? 'Usuário' }}!</h1>
     </div>
 

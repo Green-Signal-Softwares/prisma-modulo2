@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 class ChatTest extends TestCase
 {
-    use RefreshDatabase;
+    use \Illuminate\Foundation\Testing\DatabaseTransactions;
 
     protected $user;
     protected $agent;
@@ -495,6 +495,218 @@ class ChatTest extends TestCase
             'activity' => 'Transferência',
             'type' => 'CHAMADO'
         ]);
+    }
+
+    public function test_user_can_send_message_with_multiple_files()
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $file1 = \Illuminate\Http\UploadedFile::fake()->image('photo1.jpg');
+        $file2 = \Illuminate\Http\UploadedFile::fake()->create('document.pdf', 100);
+
+        $response = $this->actingAs($this->user)
+            ->postJson(route('chat.messages.store', $this->solicitation), [
+                'text' => 'Aqui estão meus arquivos',
+                'files' => [$file1, $file2]
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'success',
+            'message' => [
+                'id', 'text', 'files'
+            ]
+        ]);
+
+        $message = Message::find($response->json('message.id'));
+        $this->assertCount(2, $message->files);
+        $this->assertCount(2, $message->file_path);
+        $this->assertCount(2, $message->file_name);
+    }
+
+    public function test_user_cannot_send_more_than_5_files()
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $files = [];
+        for ($i = 0; $i < 6; $i++) {
+            $files[] = \Illuminate\Http\UploadedFile::fake()->image("img{$i}.jpg");
+        }
+
+        $response = $this->actingAs($this->user)
+            ->postJson(route('chat.messages.store', $this->solicitation), [
+                'text' => 'Muitos arquivos',
+                'files' => $files
+            ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_user_can_edit_message_and_add_attachment()
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $msg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->user->id,
+            'text' => 'Mensagem sem anexo'
+        ]);
+
+        $newFile = \Illuminate\Http\UploadedFile::fake()->image('edit_photo.jpg');
+
+        $response = $this->actingAs($this->user)
+            ->putJson(route('chat.messages.edit', $msg), [
+                'text' => 'Mensagem editada com anexo',
+                'files' => [$newFile]
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'text' => 'Mensagem editada com anexo'
+        ]);
+
+        $msg->refresh();
+        $this->assertEquals('Mensagem editada com anexo', $msg->text);
+        $this->assertCount(1, $msg->files);
+    }
+
+    public function test_user_can_edit_attachment_only_message_to_add_text_and_attachment()
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $initialFile = \Illuminate\Http\UploadedFile::fake()->create('initial_doc.pdf', 50);
+        $filePath = $initialFile->store('messages', 'public');
+
+        $msg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->user->id,
+            'text' => null,
+            'file_path' => [$filePath],
+            'file_name' => ['initial_doc.pdf'],
+        ]);
+
+        $newFile = \Illuminate\Http\UploadedFile::fake()->image('added_photo.jpg');
+
+        $response = $this->actingAs($this->user)
+            ->putJson(route('chat.messages.edit', $msg), [
+                'text' => 'Texto adicionado ao anexo existente',
+                'files' => [$newFile]
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'text' => 'Texto adicionado ao anexo existente'
+        ]);
+
+        $msg->refresh();
+        $this->assertEquals('Texto adicionado ao anexo existente', $msg->text);
+        $this->assertCount(2, $msg->files);
+    }
+
+    public function test_user_can_edit_message_with_text_and_attachments_to_remove_attachment_or_update_text()
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $initialFile = \Illuminate\Http\UploadedFile::fake()->create('doc.pdf', 50);
+        $filePath = $initialFile->store('messages', 'public');
+
+        $msg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->user->id,
+            'text' => 'Texto inicial',
+            'file_path' => [$filePath],
+            'file_name' => ['doc.pdf'],
+        ]);
+
+        // Scenario A: Keep attachment and update text
+        $response1 = $this->actingAs($this->user)
+            ->putJson(route('chat.messages.edit', $msg), [
+                'text' => 'Texto atualizado',
+                'keep_files' => [$filePath]
+            ]);
+
+        $response1->assertStatus(200);
+        $msg->refresh();
+        $this->assertEquals('Texto atualizado', $msg->text);
+        $this->assertCount(1, $msg->files);
+
+        // Scenario B: Remove attachment and keep updated text
+        $response2 = $this->actingAs($this->user)
+            ->putJson(route('chat.messages.edit', $msg), [
+                'text' => 'Texto atualizado sem anexos',
+                'keep_files' => []
+            ]);
+
+        $response2->assertStatus(200);
+        $msg->refresh();
+        $this->assertEquals('Texto atualizado sem anexos', $msg->text);
+        $this->assertCount(0, $msg->files);
+    }
+
+    public function test_staff_can_send_whisper_message_and_client_cannot_see_it()
+    {
+        $this->solicitation->update(['atendente_id' => $this->agent->id]);
+
+        // 1. Client posts a message
+        $clientMsg = Message::create([
+            'solicitation_id' => $this->solicitation->id,
+            'user_id' => $this->user->id,
+            'text' => 'Preciso de ajuda com minha fatura.',
+        ]);
+
+        // 2. Staff posts a whisper (internal note) on that message
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('chat.messages.store', $this->solicitation), [
+                'text' => 'Cliente inadimplente no sistema legado, checar cadastro.',
+                'type' => 'whisper',
+                'parent_id' => $clientMsg->id,
+            ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $whisperMsg = Message::where('text', 'Cliente inadimplente no sistema legado, checar cadastro.')->first();
+        $this->assertNotNull($whisperMsg);
+        $this->assertEquals($clientMsg->id, $whisperMsg->parent_id);
+
+        // 3. Staff loads chat -> sees the whisper message
+        $staffView = $this->actingAs($this->agent)
+            ->get(route('atendente.chat.index', $this->solicitation->id));
+        $staffView->assertStatus(200);
+        $staffView->assertSee('Cliente inadimplente no sistema legado');
+
+        // 4. Client loads chat -> DOES NOT see the whisper message
+        $clientView = $this->actingAs($this->user)
+            ->get(route('chat.index', $this->solicitation->id));
+        $clientView->assertStatus(200);
+        $clientView->assertDontSee('Cliente inadimplente no sistema legado');
+
+        // 5. Client attempts to post a whisper -> returns 403 Forbidden
+        $forbiddenResponse = $this->actingAs($this->user)
+            ->postJson(route('chat.messages.store', $this->solicitation), [
+                'text' => 'Tentativa ilegal de sussurro',
+                'type' => 'whisper',
+            ]);
+        $forbiddenResponse->assertStatus(403);
+    }
+
+    public function test_whisper_on_opening_message_card_sanitizes_parent_id()
+    {
+        $this->solicitation->update(['atendente_id' => $this->agent->id]);
+
+        $response = $this->actingAs($this->agent)
+            ->postJson(route('chat.messages.store', $this->solicitation), [
+                'text' => 'Comentário na mensagem de abertura do chamado',
+                'type' => 'whisper',
+                'parent_id' => 'opening',
+            ]);
+
+        $response->assertStatus(200)->assertJson(['success' => true]);
+
+        $whisperMsg = Message::where('text', 'Comentário na mensagem de abertura do chamado')->first();
+        $this->assertNotNull($whisperMsg);
+        $this->assertNull($whisperMsg->parent_id);
     }
 }
 

@@ -28,8 +28,10 @@ Route::middleware(['auth'])->group(function () {
 
     // Gestão de Notificações
     Route::get('/notifications', [DashboardController::class, 'getNotifications'])->name('notifications.index');
+    Route::get('/notifications/push/active', [DashboardController::class, 'getActivePushNotification'])->name('notifications.push.active');
     Route::post('/notifications/read-all', [DashboardController::class, 'readAllNotifications'])->name('notifications.readAll');
     Route::post('/notifications/{notification}/read', [DashboardController::class, 'readNotification'])->name('notifications.read');
+    Route::post('/notifications/push/{notification}/acknowledge', [DashboardController::class, 'acknowledgePushNotification'])->name('notifications.push.acknowledge');
 
     // Rotas de Mensagens (Comum para Clientes e Atendentes)
     Route::post('/solicitations/{solicitation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
@@ -58,7 +60,7 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // Rotas de Atendente (Apenas role: atendente)
-    Route::middleware(['role:atendente'])->prefix('atendente')->name('atendente.')->group(function () {
+    Route::middleware(['role:atendente,admin'])->prefix('atendente')->name('atendente.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/messages/{id?}', [ChatController::class, 'index'])->name('chat.index');
         Route::get('/tickets', [DashboardController::class, 'tickets'])->name('tickets');
@@ -111,4 +113,9 @@ Route::middleware(['auth'])->group(function () {
     Route::put('/chat/presets/{preset}', [DashboardController::class, 'updateChatPreset'])->name('chat.presets.update');
     Route::delete('/chat/presets/{preset}', [DashboardController::class, 'destroyChatPreset'])->name('chat.presets.destroy');
     Route::post('/chat/solicitations/{solicitation}/tag', [DashboardController::class, 'updateSolicitationTag'])->name('chat.solicitations.tag');
+
+    // Internal Notes (staff-only, gated in controller)
+    Route::post('/solicitations/{solicitation}/internal-notes', [ChatController::class, 'storeInternalNote'])->name('chat.internal-notes.store');
+    Route::patch('/internal-notes/{note}/pin', [ChatController::class, 'togglePinNote'])->name('chat.internal-notes.pin');
+    Route::delete('/internal-notes/{note}', [ChatController::class, 'destroyInternalNote'])->name('chat.internal-notes.destroy');
 });

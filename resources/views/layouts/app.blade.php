@@ -35,6 +35,33 @@
             font-family: 'AMX', 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
         }
 
+        .breadcrumb {
+            font-family: 'AMX', 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+            vertical-align: middle;
+            color: #404040;
+        }
+
+        .breadcrumb-link {
+            font-weight: 500;
+            text-decoration: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .breadcrumb-link:hover {
+            opacity: 0.8;
+        }
+
+        .breadcrumb-current {
+            font-weight: 400;
+        }
+
+        .breadcrumb-separator {
+            font-weight: 400;
+        }
+
         /* Sidebar Smooth Transition */
         #sidebar {
             background: linear-gradient(89.24deg, #A01724 0%, #DA291C 100%);
@@ -79,6 +106,46 @@
                 transform: translateX(0);
             }
         }
+
+        /* Lightbox Modal Viewport Overlay Protection */
+        #image-lightbox-modal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999 !important;
+            background-color: rgba(10, 10, 10, 0.95) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: stretch !important;
+            box-sizing: border-box !important;
+        }
+
+        #image-lightbox-modal:not(.hidden) {
+            display: flex !important;
+        }
+
+        #lightbox-prev-btn {
+            position: fixed !important;
+            left: 24px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            z-index: 100000 !important;
+        }
+
+        #lightbox-next-btn {
+            position: fixed !important;
+            right: 24px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            z-index: 100000 !important;
+        }
     </style>
 </head>
 
@@ -91,11 +158,7 @@
             $user = Auth::user();
             $activeNotifications = \App\Models\SystemNotification::where('status', 'active')
                 ->where('start_at', '<=', $now)
-                ->where('end_at', '>=', $now)
-                ->whereIn('send_to', ['all', $user->role])
-                ->get();
-                
-            $activeSystemNotifications = $activeNotifications->where('type', 'system');
+                ->where('end_at', '>=', $now);
             $activePushNotifications = $activeNotifications->where('type', 'push');
         }
     @endphp
@@ -109,15 +172,16 @@
     <aside id="sidebar" class="flex flex-col shadow-xl pt-[34px] pr-[32px] pb-[34px] pl-[20px] gap-[20px] text-white">
         <!-- Top Row: Hamburger & Menu Title -->
         <div class="relative flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <!-- Hamburger Icon -->
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
-                    stroke="currentColor" class="w-6 h-6 text-white">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                </svg>
-                <span class="text-xl font-bold text-white tracking-tight">Menu</span>
-            </div>
+                <button type="button" onclick="toggleSidebar()"
+                    class="flex items-center gap-3 text-left cursor-pointer focus:outline-none hover:opacity-90 transition-opacity">
+                    <!-- Hamburger Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+                        stroke="currentColor" class="w-6 h-6 text-white">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                    <span class="text-xl font-bold text-white tracking-tight">Menu</span>
+                </button>
             <!-- Setinha toggle button (Absolute positioned overflowing the border) -->
             <button onclick="toggleSidebar()"
                 class="absolute right-[-48px] w-9 h-9 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all focus:outline-none z-55">
@@ -372,11 +436,16 @@
                             d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                     </svg>
                 </button>
-                <div class="flex items-center gap-3">
+                @php
+                    $homeRoute = auth()->check() && auth()->user()->role === 'admin'
+                        ? route('admin.dashboard')
+                        : route('dashboard');
+                @endphp
+                <a href="{{ $homeRoute }}" class="flex items-center gap-3 cursor-pointer">
                     <img src="/img/Logo Prisma.png" alt="Logo Prisma" class="h-7 object-contain">
                     <div class="w-px h-5 bg-gray-200"></div>
                     <img src="/img/Logo Claro.png" alt="Logo Claro" class="h-7 object-contain">
-                </div>
+                </a>
             </div>
 
             <!-- Centro: Barra de Pesquisa e Filtros -->
@@ -388,8 +457,8 @@
                     <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" class="w-4 h-4">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="m21-21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                            <circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20 20l-3.5-3.5" />
                         </svg>
                     </span>
                 </div>
@@ -1066,38 +1135,38 @@
             return div.innerHTML;
         }
 
-        let attachedFiles = [];
+        let supportAttachedFiles = [];
 
         function handleSupportFileSelected(input) {
             if (input.files) {
                 for (let i = 0; i < input.files.length; i++) {
-                    attachedFiles.push(input.files[i]);
+                    supportAttachedFiles.push(input.files[i]);
                 }
             }
-            renderAttachedFiles();
-            updateFileInputFiles();
+            renderSupportAttachedFiles();
+            updateSupportFileInputFiles();
         }
 
-        function removeAttachedFile(index) {
-            attachedFiles.splice(index, 1);
-            renderAttachedFiles();
-            updateFileInputFiles();
+        function removeSupportAttachedFile(index) {
+            supportAttachedFiles.splice(index, 1);
+            renderSupportAttachedFiles();
+            updateSupportFileInputFiles();
         }
 
-        function updateFileInputFiles() {
+        function updateSupportFileInputFiles() {
             const input = document.getElementById('support-file-input');
             const dt = new DataTransfer();
-            attachedFiles.forEach(file => {
+            supportAttachedFiles.forEach(file => {
                 dt.items.add(file);
             });
             input.files = dt.files;
         }
 
-        function renderAttachedFiles() {
+        function renderSupportAttachedFiles() {
             const container = document.getElementById('attached-files-container');
             container.innerHTML = '';
 
-            if (attachedFiles.length === 0) {
+            if (supportAttachedFiles.length === 0) {
                 container.classList.add('hidden');
                 return;
             }
@@ -1105,7 +1174,7 @@
             container.classList.remove('hidden');
             container.className = "flex flex-wrap gap-2 mt-3 justify-start";
 
-            attachedFiles.forEach((file, index) => {
+            supportAttachedFiles.forEach((file, index) => {
                 const tag = document.createElement('div');
                 tag.className = "flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg bg-white text-xs font-bold text-gray-750 shadow-sm transition-all";
                 tag.style.fontFamily = "'AMX', sans-serif";
@@ -1115,7 +1184,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                         </svg>
                         <span class="truncate max-w-[150px] text-gray-650">${file.name}</span>
-                        <button type="button" onclick="removeAttachedFile(${index})" class="text-gray-400 hover:text-red-500 transition-colors focus:outline-none ml-1 cursor-pointer">
+                        <button type="button" onclick="removeSupportAttachedFile(${index})" class="text-gray-400 hover:text-red-500 transition-colors focus:outline-none ml-1 cursor-pointer">
                             <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
                             </svg>
@@ -1141,8 +1210,8 @@
             document.getElementById('selected-triage-path-input').value = '';
             document.getElementById('selected-attendant-type-input').value = '';
 
-            attachedFiles = [];
-            renderAttachedFiles();
+            supportAttachedFiles = [];
+            renderSupportAttachedFiles();
 
             document.getElementById('support-step-options').innerHTML = '';
             document.getElementById('support-step-empty').classList.add('hidden');
@@ -1194,48 +1263,192 @@
         }
     </script>
     <!-- Push Notification Modal -->
-    @if(count($activePushNotifications) > 0)
-        @php
-            $pushNotif = $activePushNotifications->first();
-        @endphp
-        <div id="push-notification-modal" class="fixed inset-0 z-[110] flex items-center justify-center select-none hidden">
-            <!-- Backdrop -->
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xs" onclick="closePushNotificationModal()"></div>
-            <!-- Modal Body -->
+    @auth
+        <div id="push-notification-modal" class="fixed inset-0 z-[110] hidden select-none items-center justify-center">
+            <div class="fixed inset-0 bg-black/60 backdrop-blur-xs" data-push-close></div>
             <div class="relative bg-white rounded-[24px] w-full max-w-md p-8 shadow-2xl border border-gray-100 mx-4 z-10 flex flex-col gap-4 transform transition-all duration-300">
-                <!-- Title Row -->
                 <div class="flex items-center gap-2">
-                    <!-- Red Bell SVG -->
                     <svg class="w-6 h-6 text-[#DA291C]" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                     </svg>
-                    <h3 class="text-lg font-bold text-gray-900" style="font-family: 'AMX', sans-serif;">
-                        Notificação Push
-                    </h3>
+                    <h3 id="push-notification-title" class="text-lg font-bold text-gray-900" style="font-family: 'AMX', sans-serif;">Notificação Push</h3>
                 </div>
-                <!-- Content -->
-                <p class="text-gray-500 text-sm leading-relaxed whitespace-pre-line">
-                    {{ $pushNotif->content }}
-                </p>
-                <!-- Actions -->
+                <p id="push-notification-content" class="text-gray-500 text-sm leading-relaxed whitespace-pre-line"></p>
                 <div class="mt-2">
-                    <button onclick="closePushNotificationModal()" 
-                        class="w-full bg-[#E8807A] hover:bg-[#e06c65] text-white font-bold py-3 px-4 rounded-[14px] transition-all cursor-pointer text-center select-none shadow-sm">
+                    <button id="push-notification-ok" type="button" disabled
+                        class="w-full bg-[#E8807A] opacity-60 text-white font-bold py-3 px-4 rounded-[14px] transition-all cursor-not-allowed text-center select-none shadow-sm">
                         Ok
                     </button>
                 </div>
             </div>
         </div>
         <script>
-            function closePushNotificationModal() {
-                document.getElementById('push-notification-modal').classList.add('hidden');
-                sessionStorage.setItem('dismissed_push_notification_{{ $pushNotif->id }}', 'true');
-            }
-            if (!sessionStorage.getItem('dismissed_push_notification_{{ $pushNotif->id }}')) {
-                document.getElementById('push-notification-modal').classList.remove('hidden');
-            }
+            (function () {
+                const modal = document.getElementById('push-notification-modal');
+                const titleEl = document.getElementById('push-notification-title');
+                const contentEl = document.getElementById('push-notification-content');
+                const okButton = document.getElementById('push-notification-ok');
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                let currentNotificationId = null;
+                let enableTimer = null;
+
+                function resetOkButtonState() {
+                    okButton.disabled = true;
+                    okButton.classList.add('opacity-60', 'cursor-not-allowed');
+                    okButton.classList.remove('hover:bg-[#e06c65]', 'cursor-pointer');
+                }
+
+                function enableOkButton() {
+                    okButton.disabled = false;
+                    okButton.classList.remove('opacity-60', 'cursor-not-allowed');
+                    okButton.classList.add('hover:bg-[#e06c65]', 'cursor-pointer');
+                }
+
+                function closeModal() {
+                    if (currentNotificationId) {
+                        sessionStorage.setItem(`dismissed_push_notification_${currentNotificationId}`, 'true');
+                    }
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    currentNotificationId = null;
+                    if (enableTimer) {
+                        clearTimeout(enableTimer);
+                        enableTimer = null;
+                    }
+                }
+
+                function logAcknowledgement(notificationId) {
+                    return fetch(`/notifications/push/${notificationId}/acknowledge`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                    }).catch(() => {});
+                }
+
+                function showNotification(notification) {
+                    if (!notification || !notification.id) return;
+
+                    if (sessionStorage.getItem(`dismissed_push_notification_${notification.id}`)) {
+                        return;
+                    }
+
+                    const isSameNotification = currentNotificationId === notification.id && !modal.classList.contains('hidden');
+                    if (isSameNotification) return;
+
+                    currentNotificationId = notification.id;
+                    titleEl.textContent = notification.title || 'Notificação Push';
+                    contentEl.textContent = notification.content || '';
+                    resetOkButtonState();
+
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+
+                    if (enableTimer) {
+                        clearTimeout(enableTimer);
+                    }
+
+                    enableTimer = setTimeout(enableOkButton, 5000);
+                }
+
+                async function pollActiveNotification() {
+                    try {
+                        const response = await fetch('{{ route('notifications.push.active') }}', {
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                        });
+
+                        const data = await response.json();
+                        if (data.success && data.notification) {
+                            showNotification(data.notification);
+                        }
+                    } catch (error) {
+                        console.error('Erro ao carregar notificação push:', error);
+                    }
+                }
+
+                okButton.addEventListener('click', function () {
+                    if (okButton.disabled || !currentNotificationId) return;
+
+                    logAcknowledgement(currentNotificationId).finally(closeModal);
+                });
+
+                modal.querySelectorAll('[data-push-close]').forEach((element) => {
+                    element.addEventListener('click', closeModal);
+                });
+
+                pollActiveNotification();
+                setInterval(pollActiveNotification, 15000);
+            })();
         </script>
-    @endif
+    @endauth
+
+    <!-- Modal de Visualização de Imagem (Lightbox com Carrossel) -->
+    <div id="image-lightbox-modal" class="hidden">
+
+        <!-- Top Bar: Indicator + Close -->
+        <div class="flex items-center justify-between px-6 py-5 w-full flex-shrink-0" style="background: rgba(0,0,0,0.3);">
+            <!-- Indicador de Posição -->
+            <div id="lightbox-position" class="text-white text-xs font-extrabold px-4 py-2 rounded-full"
+                style="background: linear-gradient(135deg, #DA291C 0%, #ff6b5b 100%); box-shadow: 0 4px 12px rgba(218,41,28,0.5); letter-spacing: 0.08em; text-transform: uppercase;">1 de 1</div>
+
+            <!-- Botão Fechar -->
+            <button type="button" onclick="closeImageLightbox()"
+                class="text-white/80 hover:text-white transition-all focus:outline-none cursor-pointer"
+                style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Image Area: centered, fills remaining space -->
+        <div class="flex-1 w-full flex items-center justify-center relative" style="min-height:0; padding: 0 80px;">
+
+            <!-- Botão Anterior -->
+            <button type="button" id="lightbox-prev-btn" onclick="previousImage()"
+                class="absolute left-4 top-1/2 -translate-y-1/2 z-20 text-white focus:outline-none cursor-pointer"
+                style="background: linear-gradient(135deg, #DA291C 0%, #ff6b5b 100%); box-shadow: 0 6px 24px rgba(218,41,28,0.6); border-radius: 50%; width:52px; height:52px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: transform .15s, box-shadow .15s;">
+                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                </svg>
+            </button>
+
+            <!-- Imagem centralizada em card para visibilidade total -->
+            <div class="flex items-center justify-center p-3 bg-white rounded-2xl shadow-2xl max-w-[85vw] max-h-[calc(100vh-220px)] transition-all duration-200 my-auto">
+                <img id="lightbox-image-el" src="" alt="Visualização"
+                    style="max-width:100%; max-height:calc(100vh - 250px); object-fit:contain; border-radius:10px; display:block;">
+            </div>
+
+            <!-- Botão Próximo -->
+            <button type="button" id="lightbox-next-btn" onclick="nextImage()"
+                class="absolute right-4 top-1/2 -translate-y-1/2 z-20 text-white focus:outline-none cursor-pointer"
+                style="background: linear-gradient(135deg, #DA291C 0%, #ff6b5b 100%); box-shadow: 0 6px 24px rgba(218,41,28,0.6); border-radius: 50%; width:52px; height:52px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: transform .15s, box-shadow .15s;">
+                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5 15.75 12l-7.5 7.5" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Bottom Bar: Thumbnails + Download -->
+        <div class="flex flex-col items-center gap-4 px-6 py-5 w-full flex-shrink-0" style="background: rgba(0,0,0,0.3);">
+            <!-- Thumbnail Strip -->
+            <div id="lightbox-thumbnails" class="hidden flex items-center gap-2.5 overflow-x-auto max-w-[90vw] pb-1 scroll-smooth"
+                style="mask-image: linear-gradient(90deg, transparent 0%, black 10%, black 90%, transparent 100%);"></div>
+
+            <!-- Botão Download -->
+            <a id="lightbox-download-link" href="" download
+                class="inline-flex items-center gap-2 px-6 py-2.5 text-white text-xs font-extrabold uppercase tracking-widest rounded-full cursor-pointer transition-all"
+                style="background: linear-gradient(135deg, #DA291C 0%, #ff6b5b 100%); box-shadow: 0 6px 20px rgba(218,41,28,0.5); letter-spacing:0.1em;">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Baixar
+            </a>
+        </div>
+    </div>
 
     @yield('scripts')
 </body>

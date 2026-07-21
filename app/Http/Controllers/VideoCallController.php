@@ -289,6 +289,7 @@ class VideoCallController extends Controller
                 "fallback_meet_url" => $fallbackMeetUrl,
                 "initiated_by" => auth()->user()->name,
                 "initiated_by_role" => auth()->user()->role,
+                "audio_only" => $request->boolean('audio_only'),
                 "status" => "active",
                 "started_at" => now()->toISOString(),
             ],

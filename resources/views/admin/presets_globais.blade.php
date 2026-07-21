@@ -4,10 +4,15 @@
 
 @section('content')
 <!-- Breadcrumbs -->
-<div class="flex items-center gap-2 text-xs text-gray-500 mb-2 select-none">
-    <span>Claro Prisma</span>
-    <span>&gt;</span>
-    <span class="text-gray-800 font-medium">Presets Globais</span>
+<div class="mb-2 select-none">
+    @php
+        $homeRoute = auth()->check() && auth()->user()->role === 'admin' ? route('admin.dashboard') : route('dashboard');
+    @endphp
+    <nav aria-label="breadcrumb" class="flex items-center gap-1.5">
+        <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+        <span class="breadcrumb breadcrumb-separator">&gt;</span>
+        <span class="breadcrumb breadcrumb-current">Presets Globais</span>
+    </nav>
 </div>
 
 <!-- Header -->

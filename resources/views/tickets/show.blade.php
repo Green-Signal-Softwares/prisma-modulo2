@@ -34,9 +34,16 @@
 @endphp
     <!-- Breadcrumbs -->
     <div class="mb-4 select-none">
-        <div class="text-xs text-gray-500 mb-1">
-            <span>Claro Prisma</span> &gt; <span class="font-medium text-gray-700">Tickets de suporte</span>
-        </div>
+        @php
+            $homeRoute = auth()->check() && auth()->user()->role === 'admin'
+                ? route('admin.dashboard')
+                : (auth()->check() && auth()->user()->role === 'atendente' ? route('atendente.dashboard') : route('dashboard'));
+        @endphp
+        <nav aria-label="breadcrumb" class="flex items-center gap-1.5 mb-1">
+            <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+            <span class="breadcrumb breadcrumb-separator">&gt;</span>
+            <a href="{{ auth()->check() && auth()->user()->role === 'admin' ? route('admin.tickets') : (auth()->check() && auth()->user()->role === 'atendente' ? route('atendente.tickets') : route('dashboard')) }}" class="breadcrumb breadcrumb-link">Tickets de suporte</a>
+        </nav>
     </div>
 
     <!-- Header com Título e Ações -->
@@ -299,24 +306,25 @@
 
                     <div class="flex flex-col gap-1.5 mt-1">
                         <p class="text-sm font-semibold text-gray-700 leading-relaxed whitespace-pre-wrap">{{ $msg->text }}</p>
-                        @if($msg->file_path)
-                            @php
-                                $ext = strtolower(pathinfo($msg->file_path, PATHINFO_EXTENSION));
-                                $isImg = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']);
-                            @endphp
-                            <div class="mt-2">
-                                <a href="{{ asset('storage/' . $msg->file_path) }}" target="_blank" class="border border-gray-200 rounded-xl p-2 bg-[#F8F9FA] hover:bg-gray-100 transition-colors flex items-center gap-2 max-w-[240px] shadow-sm font-bold text-xs text-gray-700">
-                                    @if($isImg)
-                                        <img src="{{ asset('storage/' . $msg->file_path) }}" class="w-10 h-10 object-cover rounded-lg">
-                                    @else
-                                        <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center text-[#DA291C]">
-                                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                            </svg>
-                                        </div>
-                                    @endif
-                                    <span class="truncate max-w-[150px]">{{ $msg->file_name ?? basename($msg->file_path) }}</span>
-                                </a>
+                        @if($msg->files && count($msg->files) > 0)
+                            <div class="mt-2 flex flex-col gap-2">
+                                @foreach($msg->files as $f)
+                                    @php
+                                        $isImg = ($f['type'] ?? '') === 'image';
+                                    @endphp
+                                    <a href="{{ $f['url'] }}" target="_blank" class="border border-gray-200 rounded-xl p-2 bg-[#F8F9FA] hover:bg-gray-100 transition-colors flex items-center gap-2 max-w-[240px] shadow-sm font-bold text-xs text-gray-700">
+                                        @if($isImg)
+                                            <img src="{{ $f['url'] }}" class="w-10 h-10 object-cover rounded-lg">
+                                        @else
+                                            <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center text-[#DA291C]">
+                                                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                </svg>
+                                            </div>
+                                        @endif
+                                        <span class="truncate max-w-[150px]">{{ $f['name'] }}</span>
+                                    </a>
+                                @endforeach
                             </div>
                         @endif
                     </div>

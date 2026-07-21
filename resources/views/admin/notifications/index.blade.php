@@ -5,11 +5,14 @@
 <div class="w-full px-6 py-6 select-none">
     <!-- Breadcrumbs & Header -->
     <div class="mb-6">
-        <div class="flex items-center gap-1 text-xs text-gray-400 font-semibold mb-1">
-            <span>Claro Prisma</span>
-            <span>&gt;</span>
-            <span>Legendas</span>
-        </div>
+        @php
+            $homeRoute = auth()->check() && auth()->user()->role === 'admin' ? route('admin.dashboard') : route('dashboard');
+        @endphp
+        <nav aria-label="breadcrumb" class="flex items-center gap-1.5 mb-1 select-none">
+            <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+            <span class="breadcrumb breadcrumb-separator">&gt;</span>
+            <span class="breadcrumb breadcrumb-current">Legendas</span>
+        </nav>
         <div class="flex items-center justify-between mt-2">
             <h1 class="text-3xl font-extrabold text-[#DA291C]" style="font-family: 'AMX', sans-serif;">Notificações</h1>
             <button onclick="openModal()" 

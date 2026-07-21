@@ -5,9 +5,16 @@
 @section('content')
 <!-- Breadcrumbs & Heading -->
 <div class="mb-6">
-    <div class="text-xs text-gray-500 mb-1">
-        <span>Claro Prisma</span> &gt; <span>Gestão de Usuários</span> &gt; <span class="font-medium text-gray-700">Novo Usuário</span>
-    </div>
+    @php
+        $homeRoute = auth()->check() && auth()->user()->role === 'admin' ? route('admin.dashboard') : route('dashboard');
+    @endphp
+    <nav aria-label="breadcrumb" class="flex items-center gap-1.5 mb-1 select-none">
+        <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+        <span class="breadcrumb breadcrumb-separator">&gt;</span>
+        <a href="{{ route('users.index') }}" class="breadcrumb breadcrumb-link">Gestão de Usuários</a>
+        <span class="breadcrumb breadcrumb-separator">&gt;</span>
+        <span class="breadcrumb breadcrumb-current">Novo Usuário</span>
+    </nav>
     <h1 class="text-3xl font-bold text-[#A01724]">Cadastrar Novo Usuário</h1>
 </div>
 

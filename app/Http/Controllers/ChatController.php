@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Solicitation;
 use App\Models\Message;
+use App\Models\InternalNote;
 use App\Models\Preset;
 use App\Models\Tag;
 use App\Models\User;
@@ -52,7 +53,9 @@ class ChatController extends Controller
         } else {
             $solicitations = Solicitation::where('user_id', auth()->id())
                 ->withCount(['messages as unread_messages_count' => function ($query) {
-                    $query->where('user_id', '!=', auth()->id())->whereNull('read_at');
+                    $query->where('user_id', '!=', auth()->id())
+                        ->whereNotIn('type', ['internal', 'whisper'])
+                        ->whereNull('read_at');
                 }])
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -66,19 +69,19 @@ class ChatController extends Controller
         }
 
         if ($activeSolicitation) {
-            // Carrega mensagens e atendente do banco de dados com filtro de mensagens internas para clientes
+            // Carrega mensagens e atendente do banco de dados com filtro de mensagens internas e sussurros para clientes
             $activeSolicitation->load(['messages' => function ($query) {
                 if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
-                    $query->where('type', '!=', 'internal');
+                    $query->where('type', '!=', 'whisper');
                 }
-            }, 'messages.user', 'messages.parent.user', 'atendente', 'evaluations', 'tag']);
+            }, 'messages.user', 'messages.parent.user', 'atendente', 'evaluations', 'tag', 'internalNotes']);
             
             // Marca mensagens do outro participante como lidas
             $readQuery = $activeSolicitation->messages()
                 ->where('user_id', '!=', auth()->id())
                 ->whereNull('read_at');
             if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
-                $readQuery->where('type', '!=', 'internal');
+                $readQuery->whereNotIn('type', ['internal', 'whisper']);
             }
             $readQuery->update(['read_at' => now()]);
         }
@@ -124,67 +127,118 @@ class ChatController extends Controller
      */
     public function storeMessage(Request $request, Solicitation $solicitation)
     {
-        // Bloqueia envio enquanto o chamado está na fila
-        if ($solicitation->status === 'na_fila') {
+        // Bloqueia envio de clientes enquanto o chamado está na fila
+        if ($solicitation->status === 'na_fila' && !in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
             return response()->json(['error' => 'Aguardando atendente. O chamado ainda está na fila.'], 422);
+        }
+
+        // Sanitiza parent_id se não for numérico (ex: "opening" da mensagem de abertura)
+        if ($request->has('parent_id') && (!is_numeric($request->input('parent_id')) || (int)$request->input('parent_id') <= 0)) {
+            $request->merge(['parent_id' => null]);
         }
 
         $request->validate([
             'text' => 'nullable|string',
             'file' => 'nullable|file|max:10240',
+            'files.*' => 'nullable|file|max:10240',
+            'files' => 'nullable|array|max:5',
             'parent_id' => 'nullable|exists:messages,id',
+            'type' => 'nullable|string|in:text,whisper',
         ]);
 
-        $filePath = null;
-        $fileName = null;
-
-        if ($request->hasFile('file') && $request->file('file')->isValid()) {
-            $file = $request->file('file');
-            $filePath = $file->store('messages', 'public');
-            $fileName = $file->getClientOriginalName();
+        $msgType = $request->input('type', 'text');
+        if ($msgType === 'whisper') {
+            if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+                return response()->json(['error' => 'Apenas a equipe pode enviar comentários internos.'], 403);
+            }
         }
 
-        if (!$request->filled('text') && !$filePath) {
+        $files = [];
+        if ($request->hasFile('files')) {
+            $uploaded = $request->file('files');
+            if (is_array($uploaded)) {
+                $files = array_merge($files, $uploaded);
+            }
+        }
+        if ($request->hasFile('file') && $request->file('file')->isValid()) {
+            $files[] = $request->file('file');
+        }
+
+        if (count($files) > 5) {
+            return response()->json(['error' => 'Máximo de 5 anexos permitidos por mensagem.'], 422);
+        }
+
+        $filePaths = [];
+        $fileNames = [];
+        foreach ($files as $f) {
+            if ($f && $f->isValid()) {
+                $filePaths[] = $f->store('messages', 'public');
+                $fileNames[] = $f->getClientOriginalName();
+            }
+        }
+
+        if (!$request->filled('text') && empty($filePaths)) {
             return response()->json(['error' => 'Message cannot be empty.'], 422);
+        }
+
+        $isOpening = $request->boolean('is_opening') || $request->input('parent_id') === 'opening';
+        $parentId = $request->input('parent_id');
+        if (!is_numeric($parentId) || (int)$parentId <= 0) {
+            $parentId = null;
+        }
+
+        $meta = [];
+        if ($isOpening) {
+            $meta['is_opening'] = true;
+            $meta['opening_title'] = $solicitation->title;
+            $meta['opening_sender'] = $solicitation->user ? $solicitation->user->name : 'Cliente';
         }
 
         $message = Message::create([
             'solicitation_id' => $solicitation->id,
             'user_id' => auth()->id(),
             'text' => $request->input('text'),
-            'file_path' => $filePath,
-            'file_name' => $fileName,
-            'parent_id' => $request->input('parent_id'),
+            'file_path' => count($filePaths) > 0 ? (count($filePaths) === 1 ? $filePaths[0] : $filePaths) : null,
+            'file_name' => count($fileNames) > 0 ? (count($fileNames) === 1 ? $fileNames[0] : $fileNames) : null,
+            'parent_id' => $parentId,
+            'type' => $msgType,
+            'metadata' => !empty($meta) ? $meta : null,
             'reactions' => [],
         ]);
 
-        // Se atendente/admin responder chamado em atendimento, atualiza para 'em_replica'
-        if (in_array(auth()->user()->role, ['atendente', 'admin']) && in_array($solicitation->status, ['aberta', 'nova', 'em_atendimento'])) {
-            $solicitation->update(['status' => 'em_replica']);
-        }
-
-        // Dispara notificação de resposta
-        try {
-            if (auth()->user()->role === 'user' && $solicitation->atendente) {
-                // Cliente envia, notifica o atendente atribuído
-                $solicitation->atendente->notify(new SolicitationNotification(
-                    'Nova mensagem recebida',
-                    'Você recebeu uma resposta no chamado #' . $solicitation->ticket_number . ' de ' . auth()->user()->name . '.',
-                    $solicitation->id,
-                    'resposta'
-                ));
-            } elseif (in_array(auth()->user()->role, ['atendente', 'admin']) && $solicitation->user) {
-                // Atendente/Admin envia, notifica o cliente
-                $senderName = auth()->user()->role === 'admin' ? 'Administrador' : 'O atendente ' . auth()->user()->name;
-                $solicitation->user->notify(new SolicitationNotification(
-                    'Nova mensagem recebida',
-                    $senderName . ' respondeu no chamado #' . $solicitation->ticket_number . '.',
-                    $solicitation->id,
-                    'resposta'
-                ));
+        // Se a mensagem for normal (não sussurro), processa alteração de status e notificação
+        if ($msgType !== 'whisper') {
+            // Se atendente/admin responder chamado em atendimento ou fila, atualiza para 'em_replica'
+            if (in_array(auth()->user()->role, ['atendente', 'admin']) && in_array($solicitation->status, ['na_fila', 'aberta', 'nova', 'em_atendimento'])) {
+                $solicitation->update([
+                    'status' => 'em_replica',
+                    'atendente_id' => $solicitation->atendente_id ?? auth()->id()
+                ]);
             }
-        } catch (\Exception $e) {
-            // Silencia
+
+            // Dispara notificação de resposta
+            try {
+                if (auth()->user()->role === 'user' && $solicitation->atendente) {
+                    // Cliente envia, notifica o atendente atribuído
+                    $solicitation->atendente->notify(new SolicitationNotification(
+                        'Nova mensagem recebida',
+                        'Você recebeu uma resposta no chamado #' . $solicitation->ticket_number . ' de ' . auth()->user()->name . '.',
+                        $solicitation->id,
+                        'resposta'
+                    ));
+                } elseif (in_array(auth()->user()->role, ['atendente', 'admin']) && $solicitation->user) {
+                    // Atendente/Admin envia, notifica o cliente
+                    $senderName = auth()->user()->role === 'admin' ? 'Administrador' : 'O atendente ' . auth()->user()->name;
+                    $solicitation->user->notify(new SolicitationNotification(
+                        'Nova mensagem recebida',
+                        $senderName . ' respondeu no chamado #' . $solicitation->ticket_number . '.',
+                        $solicitation->id,
+                        'resposta'
+                    ));
+                }
+            } catch (\Exception $e) {
+                // Silencia
+            }
         }
 
         $message->load(['user', 'parent.user']);
@@ -215,7 +269,7 @@ class ChatController extends Controller
             ->where('id', '>', $lastId);
 
         if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
-            $newMessagesQuery->where('type', '!=', 'internal');
+            $newMessagesQuery->where('type', '!=', 'whisper');
         }
 
         $newMessages = $newMessagesQuery->orderBy('created_at', 'asc')->get();
@@ -226,7 +280,7 @@ class ChatController extends Controller
                 ->where('user_id', '!=', auth()->id())
                 ->whereNull('read_at');
             if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
-                $readQuery->where('type', '!=', 'internal');
+                $readQuery->whereNotIn('type', ['internal', 'whisper']);
             }
             $readQuery->update(['read_at' => now()]);
         }
@@ -234,7 +288,7 @@ class ChatController extends Controller
         // Monta o estado atualizado de todas as mensagens
         $allMessagesQuery = $solicitation->messages();
         if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
-            $allMessagesQuery->where('type', '!=', 'internal');
+            $allMessagesQuery->where('type', '!=', 'whisper');
         }
         $allMessages = $allMessagesQuery->get();
         $updatedStates = [];
@@ -250,6 +304,9 @@ class ChatController extends Controller
                 }
             }
 
+            $files = $msg->files;
+            $firstFile = $files[0] ?? null;
+
             $updatedStates[$msg->id] = [
                 'type' => $msg->type ?? 'text',
                 'metadata' => $msg->metadata,
@@ -257,6 +314,10 @@ class ChatController extends Controller
                 'read_at' => $msg->read_at ? $msg->read_at->format('d/m - H:i') : null,
                 'text' => $msg->text,
                 'time' => $msg->created_at->format('d/m - H:i') . ($msg->updated_at->gt($msg->created_at) ? ' (EDITADA)' : ''),
+                'files' => $files,
+                'file_url' => $firstFile ? $firstFile['url'] : null,
+                'file_name' => $firstFile ? $firstFile['name'] : null,
+                'file_type' => $firstFile ? $firstFile['type'] : null,
             ];
         }
 
@@ -331,16 +392,79 @@ class ChatController extends Controller
         }
 
         $request->validate([
-            'text' => 'required|string',
+            'text' => 'nullable|string',
+            'file' => 'nullable|file|max:10240',
+            'files.*' => 'nullable|file|max:10240',
+            'files' => 'nullable|array|max:5',
         ]);
 
+        $existingFiles = $message->files;
+        if ($request->has('keep_files') || $request->has('keep_files_sent')) {
+            $keepPaths = $request->input('keep_files', []);
+            if (is_string($keepPaths)) {
+                $keepPaths = json_decode($keepPaths, true) ?? [];
+            }
+            if (!is_array($keepPaths)) {
+                $keepPaths = [];
+            }
+            $filteredExisting = array_filter($existingFiles, function($item) use ($keepPaths) {
+                $itemPath = ltrim($item['path'] ?? '', '/');
+                foreach ($keepPaths as $kp) {
+                    if (ltrim($kp, '/') === $itemPath) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+            $existingPaths = array_values(array_map(fn($item) => $item['path'], $filteredExisting));
+            $existingNames = array_values(array_map(fn($item) => $item['name'], $filteredExisting));
+        } else {
+            $existingPaths = array_map(fn($item) => $item['path'], $existingFiles);
+            $existingNames = array_map(fn($item) => $item['name'], $existingFiles);
+        }
+
+        $newFiles = [];
+        if ($request->hasFile('files')) {
+            $uploaded = $request->file('files');
+            if (is_array($uploaded)) {
+                $newFiles = array_merge($newFiles, $uploaded);
+            }
+        }
+        if ($request->hasFile('file') && $request->file('file')->isValid()) {
+            $newFiles[] = $request->file('file');
+        }
+
+        if (count($existingPaths) + count($newFiles) > 5) {
+            return response()->json(['error' => 'Máximo de 5 anexos permitidos por mensagem.'], 422);
+        }
+
+        $filePaths = $existingPaths;
+        $fileNames = $existingNames;
+        foreach ($newFiles as $f) {
+            if ($f && $f->isValid()) {
+                $filePaths[] = $f->store('messages', 'public');
+                $fileNames[] = $f->getClientOriginalName();
+            }
+        }
+
+        $newText = $request->has('text') ? $request->input('text') : $message->text;
+
+        if (!$newText && empty($filePaths)) {
+            return response()->json(['error' => 'Message cannot be empty.'], 422);
+        }
+
         $message->update([
-            'text' => $request->input('text'),
+            'text' => $newText,
+            'file_path' => count($filePaths) > 0 ? (count($filePaths) === 1 ? $filePaths[0] : $filePaths) : null,
+            'file_name' => count($fileNames) > 0 ? (count($fileNames) === 1 ? $fileNames[0] : $fileNames) : null,
         ]);
+
+        $message->load(['user', 'parent.user']);
 
         return response()->json([
             'success' => true,
             'text' => $message->text,
+            'message' => $this->formatMessageForResponse($message),
         ]);
     }
 
@@ -376,15 +500,19 @@ class ChatController extends Controller
             }
         }
 
+        $files = $msg->files;
+        $firstFile = $files[0] ?? null;
+
         return [
             'id' => $msg->id,
             'type' => $msg->type ?? 'text',
             'text' => $msg->text,
             'metadata' => $msg->metadata,
-            'file_url' => $msg->file_path ? asset('storage/' . $msg->file_path) : null,
-            'file_name' => $msg->file_name,
-            'file_type' => $msg->file_path ? $this->getFileType($msg->file_path) : null,
-            'sender' => strtoupper($msg->user->name),
+            'files' => $files,
+            'file_url' => $firstFile ? $firstFile['url'] : null,
+            'file_name' => $firstFile ? $firstFile['name'] : null,
+            'file_type' => $firstFile ? $firstFile['type'] : null,
+            'sender' => strtoupper($msg->user ? $msg->user->name : 'SISTEMA'),
             'sender_id' => $msg->user_id,
             'is_user' => (function() use ($msg) {
                 $currentUserRole = auth()->user()->role;
@@ -676,5 +804,79 @@ class ChatController extends Controller
                 $typeMatch->orWhere('description', 'like', '%Tipo de Atendimento: N2%');
             }
         });
+    }
+
+    // -------------------------------------------------------
+    // INTERNAL NOTES
+    // -------------------------------------------------------
+
+    /**
+     * Store a new internal note for the given solicitation.
+     */
+    public function storeInternalNote(Request $request, Solicitation $solicitation)
+    {
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        $request->validate([
+            'content' => 'required|string|max:3000',
+        ]);
+
+        $note = InternalNote::create([
+            'solicitation_id' => $solicitation->id,
+            'user_id'        => auth()->id(),
+            'content'        => $request->input('content'),
+            'is_pinned'      => false,
+        ]);
+
+        $note->load('user');
+
+        return response()->json([
+            'success' => true,
+            'note'    => [
+                'id'         => $note->id,
+                'content'    => $note->content,
+                'is_pinned'  => $note->is_pinned,
+                'author'     => $note->user->name ?? 'Atendente',
+                'created_at' => $note->created_at->format('d/m/Y H:i'),
+            ],
+        ]);
+    }
+
+    /**
+     * Toggle pin status of an internal note.
+     */
+    public function togglePinNote(InternalNote $note)
+    {
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        $note->update(['is_pinned' => !$note->is_pinned]);
+
+        return response()->json([
+            'success'   => true,
+            'is_pinned' => $note->is_pinned,
+        ]);
+    }
+
+    /**
+     * Delete an internal note.
+     */
+    public function destroyInternalNote(InternalNote $note)
+    {
+        if (!in_array(auth()->user()->role, ['atendente', 'admin'], true)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        // Only the author or an admin can delete
+        if ($note->user_id !== auth()->id() && auth()->user()->role !== 'admin') {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        $note->delete();
+
+        return response()->json(['success' => true]);
     }
 }

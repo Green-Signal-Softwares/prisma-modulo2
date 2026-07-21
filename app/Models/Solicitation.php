@@ -59,4 +59,12 @@ class Solicitation extends Model
     {
         return $this->hasMany(SolicitationEvaluation::class);
     }
+
+    /**
+     * Internal notes (staff-only) for this solicitation.
+     */
+    public function internalNotes()
+    {
+        return $this->hasMany(\App\Models\InternalNote::class)->with('user')->orderByDesc('is_pinned')->orderByDesc('updated_at')->orderByDesc('created_at');
+    }
 }

@@ -11,6 +11,7 @@ use App\Models\Tag;
 use App\Models\AccessProfile;
 use App\Models\ActivityLog;
 use App\Models\TriageFlowConfig;
+use App\Models\SystemNotification;
 use App\Models\Message;
 use App\Notifications\SolicitationNotification;
 
@@ -317,7 +318,7 @@ class DashboardController extends Controller
                     ->first();
                 if ($targetUser) {
                     $updateData['atendente_id'] = $targetUser->id;
-                    
+
                     // Cria log do sistema de transferência no chat
                     Message::create([
                         'solicitation_id' => $solicitation->id,
@@ -328,7 +329,7 @@ class DashboardController extends Controller
                 }
             } else {
                 $updateData['atendente_id'] = null;
-                
+
                 // Cria log do sistema de transferência no chat
                 Message::create([
                     'solicitation_id' => $solicitation->id,
@@ -428,6 +429,34 @@ class DashboardController extends Controller
     }
 
     /**
+     * Get the current active push notification for the logged user.
+     */
+    public function getActivePushNotification()
+    {
+        $now = now();
+        $user = auth()->user();
+
+        $notification = SystemNotification::where('status', 'active')
+            ->where('type', 'push')
+            ->where('start_at', '<=', $now)
+            ->where('end_at', '>=', $now)
+            ->whereIn('send_to', ['all', $user->role])
+            ->orderByDesc('start_at')
+            ->first();
+
+        return response()->json([
+            'success' => true,
+            'notification' => $notification ? [
+                'id' => $notification->id,
+                'title' => $notification->title,
+                'content' => $notification->content,
+                'start_at' => optional($notification->start_at)->toIso8601String(),
+                'end_at' => optional($notification->end_at)->toIso8601String(),
+            ] : null,
+        ]);
+    }
+
+    /**
      * Mark all notifications as read.
      */
     public function readAllNotifications()
@@ -445,6 +474,20 @@ class DashboardController extends Controller
         if ($notification) {
             $notification->markAsRead();
         }
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Log when a push notification is acknowledged by the user.
+     */
+    public function acknowledgePushNotification(\App\Models\SystemNotification $notification)
+    {
+        ActivityLog::writeLog(
+            'Notificação',
+            'PUSH',
+            "Usuário confirmou a notificação push #{$notification->id}: {$notification->title}"
+        );
+
         return response()->json(['success' => true]);
     }
 
