@@ -6,6 +6,8 @@
 @php
     $triageConfig = \App\Models\TriageFlowConfig::first();
     $triageData = $triageConfig ? $triageConfig->data : [];
+    $currentUserRole = auth()->user()->role;
+    $isStaffUser = in_array($currentUserRole, ['atendente', 'admin'], true);
 
     $setores = [];
     $filas = [];
@@ -27,7 +29,7 @@
         $extractFlows($triageData);
     }
 
-    $pessoas = \App\Models\User::where('role', 'atendente')
+    $pessoas = \App\Models\User::whereIn('role', ['atendente', 'admin'])
         ->where('status', '!=', 'inativo')
         ->orderBy('name', 'asc')
         ->get();
@@ -613,6 +615,108 @@
             background: rgba(218, 41, 28, 0.15);
             border-color: rgba(218, 41, 28, 0.3);
         }
+
+        /* Carousel Navigation Buttons Animations */
+        @keyframes buttonGlow {
+            0%, 100% {
+                box-shadow: 0 12px 40px rgba(218, 41, 28, 0.5);
+            }
+            50% {
+                box-shadow: 0 12px 50px rgba(218, 41, 28, 0.8), 0 0 30px rgba(218, 41, 28, 0.4);
+            }
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes slideInArrow {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        #lightbox-prev-btn,
+        #lightbox-next-btn {
+            animation: slideInArrow 0.3s ease-out forwards;
+        }
+
+        #lightbox-prev-btn:hover,
+        #lightbox-next-btn:hover {
+            animation: buttonGlow 1.2s ease-in-out infinite;
+        }
+
+        /* Position indicator animation */
+        @keyframes positionPulse {
+            0%, 100% {
+                transform: scale(1);
+                filter: drop-shadow(0 2px 8px rgba(218, 41, 28, 0.4));
+            }
+            50% {
+                transform: scale(1.08);
+                filter: drop-shadow(0 4px 12px rgba(218, 41, 28, 0.6));
+            }
+        }
+
+        #lightbox-position {
+            animation: positionPulse 2.5s ease-in-out infinite;
+        }
+
+        /* Thumbnail styling */
+        #lightbox-thumbnails button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #lightbox-thumbnails button:hover:not(.border-white) {
+            transform: scale(1.1);
+            opacity: 1 !important;
+        }
+
+        #lightbox-thumbnails button.border-white {
+            animation: thumbnailActive 0.3s ease-out forwards;
+        }
+
+        @keyframes thumbnailActive {
+            from {
+                transform: scale(0.95);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+
+        /* Carousel Professional Styling */
+
+        #lightbox-prev-btn:hover,
+        #lightbox-next-btn:hover {
+            box-shadow: 0 12px 40px rgba(218, 41, 28, 0.8), 0 0 20px rgba(218, 41, 28, 0.5) !important;
+            transform: scale(1.12);
+        }
+
+        #lightbox-prev-btn:active,
+        #lightbox-next-btn:active {
+            transform: scale(0.95);
+        }
+
+        #lightbox-download-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px rgba(218, 41, 28, 0.6), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+        }
+
+        #lightbox-download-link:active {
+            transform: translateY(0);
+            opacity: 0.95;
+        }
     </style>
 
     <div class="w-full flex-1 bg-[#F5F6F8] flex items-stretch select-none overflow-hidden min-h-0"
@@ -624,7 +728,16 @@
 
             <!-- Título e Botão Nova Conversa -->
             <div class="p-6 pb-3 flex flex-col gap-1">
-                <span class="text-[11px] font-bold text-gray-400 tracking-wider">Claro Prisma > Mensagens</span>
+                @php
+                    $homeRoute = auth()->check() && auth()->user()->role === 'admin'
+                        ? route('admin.dashboard')
+                        : (auth()->check() && auth()->user()->role === 'atendente' ? route('atendente.dashboard') : route('dashboard'));
+                @endphp
+                <nav aria-label="breadcrumb" class="flex items-center gap-1.5 select-none">
+                    <a href="{{ $homeRoute }}" class="breadcrumb breadcrumb-link">Claro Prisma</a>
+                    <span class="breadcrumb breadcrumb-separator">&gt;</span>
+                    <span class="breadcrumb breadcrumb-current">Mensagens</span>
+                </nav>
                 <div class="flex items-center gap-2">
                     <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight text-[#DA291C] flex items-center gap-2">
                         Mensagens
@@ -644,7 +757,10 @@
                     <input id="chat-search-input" oninput="applyChatFilters()" type="text" placeholder="Pesquisar mensagens"
                         class="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all bg-white">
                     <div class="absolute right-3.5 top-2 w-5 h-5 flex items-center justify-center opacity-60">
-                        <img src="/icones/Icone Buscar.png" alt="Buscar" class="w-full h-full object-contain">
+                        <svg class="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M20 20l-3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
                     </div>
                 </div>
             </div>
@@ -671,14 +787,14 @@
                         $hasUnread = ($sol->unread_messages_count ?? 0) > 0;
                         $cleanDesc = str_contains($sol->description, '] - ') ? explode('] - ', $sol->description, 2)[1] : $sol->description;
                     @endphp
-                    <a href="{{ auth()->user()->role === 'atendente' ? route('atendente.chat.index', $sol->id) : route('chat.index', $sol->id) }}"
+                    <a href="{{ $currentUserRole === 'admin' ? route('admin.chat.index', $sol->id) : ($currentUserRole === 'atendente' ? route('atendente.chat.index', $sol->id) : route('chat.index', $sol->id)) }}"
                         class="chat-thread-item flex items-center gap-3 px-5 py-4 transition-all cursor-pointer select-none border-b border-gray-300 {{ $isActive ? 'bg-[#2E2E2E] text-white' : 'bg-[#E5E5E5] text-gray-800 hover:bg-[#DCDCDC]' }}"
                         data-unread="{{ $hasUnread ? 'true' : 'false' }}" data-title="{{ strtolower($sol->title) }}"
                         data-desc="{{ strtolower($cleanDesc) }}">
                         <!-- Avatar / Ícone -->
                         @php
                             $targetUser = null;
-                            if (auth()->user()->role === 'atendente') {
+                            if ($isStaffUser) {
                                 // O atendente vê a foto do cliente que enviou a solicitação
                                 $targetUser = $sol->user;
                             } else {
@@ -755,7 +871,7 @@
                     <div class="h-16 px-6 bg-white border-b border-gray-100 flex items-center justify-between select-none">
                         <div class="flex items-center gap-3">
                             @php
-                                $activeAvatarUser = (auth()->user()->role === 'atendente') ? ($activeSolicitation->user ?? null) : ($activeSolicitation->atendente ?? null);
+                                $activeAvatarUser = $isStaffUser ? ($activeSolicitation->user ?? null) : ($activeSolicitation->atendente ?? null);
                                 $activeAvatarName = $activeAvatarUser ? $activeAvatarUser->name : 'Suporte Claro';
                                 $activeAvatarBg = ($activeAvatarUser && $activeAvatarUser->role === 'atendente') ? 'EAA8A8' : 'D1E7DD';
                                 $activeAvatarColor = ($activeAvatarUser && $activeAvatarUser->role === 'atendente') ? '86131E' : '0F5132';
@@ -777,7 +893,7 @@
                             @endif
                             <div class="flex items-center gap-1.5">
                                 <h2 class="text-sm font-extrabold text-gray-800 uppercase tracking-tight">
-                                    @if(auth()->user()->role === 'atendente')
+                                    @if($isStaffUser)
                                         {{ strtoupper($activeSolicitation->user->name ?? 'MAURO FILHO') }}
                                     @else
                                         {{ strtoupper($activeSolicitation->atendente->name ?? 'SUPORTE PRISMA') }}
@@ -793,7 +909,7 @@
 
                         <!-- Ações do Header -->
                         <div class="flex items-center gap-4 text-gray-700">
-                            @if(auth()->user()->role === 'atendente')
+                            @if($isStaffUser)
                                 @if(in_array($activeSolicitation->status, ['em_atendimento', 'em_replica']))
                                     <!-- 1. Concluir -->
                                     <button type="button" onclick="openChecklistModal()"
@@ -807,7 +923,7 @@
                                 <div class="relative">
                                     <button id="btn-transfer-menu" onclick="toggleTransferMenu(event)"
                                         class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
-                                        title="Transferir chamado">
+                                        title="Transferir">
                                         <img src="/icones/Icone Transferir.png" alt="Transferir" class="w-5.5 h-5.5 object-contain">
                                     </button>
 
@@ -821,8 +937,10 @@
                                                     class="w-full h-8 rounded-full bg-[#1E1E20] border border-white/20 pl-4 pr-9 text-xs text-white placeholder-white/40 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C]"
                                                     oninput="filterTransferMenu(this.value)">
                                                 <div class="absolute right-3.5 top-2 w-4 h-4 opacity-40">
-                                                    <img src="/icones/Icone Buscar.png" alt="Buscar"
-                                                        class="w-full h-full object-contain invert">
+                                                    <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" />
+                                                        <path d="M20 20l-3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
+                                                    </svg>
                                                 </div>
                                             </div>
                                                               <!-- Lista de Itens (Scrollable) -->
@@ -936,7 +1054,7 @@
                                 <button onclick="toggleChatSearch()"
                                     class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Pesquisar mensagens">
-                                    <img src="/icones/Icone Buscar.png" alt="Buscar" class="w-5 h-5 object-contain">
+                                    <img src="/icones/Icone Buscar.png" alt="Pesquisar" class="w-5.5 h-5.5 object-contain">
                                 </button>
                                 <!-- 5. Chamada de vídeo -->
                                 <button id="btn-videocall-atendente" onclick="initiateVideoCall({{ $activeSolicitation->id }})"
@@ -946,18 +1064,16 @@
                                         class="w-5.5 h-5.5 object-contain">
                                 </button>
                                 <!-- 6. Chamada de voz -->
-                                <button
-                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer relative flex items-center justify-center"
+                                <button id="btn-audiocall-atendente" onclick="initiateVideoCall({{ $activeSolicitation->id }}, true)"
+                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Iniciar chamada de voz">
                                     <img src="/icones/Icone Chamada.png" alt="Chamada de Voz" class="w-5.5 h-5.5 object-contain">
-                                    <span
-                                        class="absolute -top-1.2 -right-1 text-[9px] font-extrabold text-gray-700 bg-white rounded-full px-0.5 border border-white">+</span>
                                 </button>
                             @else
                                 <button onclick="toggleChatSearch()"
                                     class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Pesquisar mensagens">
-                                    <img src="/icones/Icone Buscar.png" alt="Buscar" class="w-5 h-5 object-contain">
+                                    <img src="/icones/Icone Buscar.png" alt="Pesquisar" class="w-5.5 h-5.5 object-contain">
                                 </button>
                                 <button id="btn-videocall-user" onclick="initiateVideoCall({{ $activeSolicitation->id }})"
                                     class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
@@ -965,12 +1081,10 @@
                                     <img src="/icones/Icone Video Chamada.png" alt="Vídeo Chamada"
                                         class="w-5.5 h-5.5 object-contain">
                                 </button>
-                                <button
-                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer relative flex items-center justify-center"
+                                <button id="btn-audiocall-user" onclick="initiateVideoCall({{ $activeSolicitation->id }}, true)"
+                                    class="hover:opacity-85 transition-opacity focus:outline-none cursor-pointer flex items-center justify-center"
                                     title="Iniciar chamada de voz">
                                     <img src="/icones/Icone Chamada.png" alt="Chamada de Voz" class="w-5.5 h-5.5 object-contain">
-                                    <span
-                                        class="absolute -top-1.2 -right-1 text-[9px] font-extrabold text-gray-700 bg-white rounded-full px-0.5 border border-white">+</span>
                                 </button>
                             @endif
                         </div>
@@ -983,7 +1097,10 @@
                                 placeholder="Buscar nas mensagens deste chat..."
                                 class="w-full pl-9 pr-9 py-1.5 border border-gray-300 rounded-full text-xs placeholder-gray-400 focus:outline-none focus:border-[#DA291C] focus:ring-1 focus:ring-[#DA291C] transition-all bg-white">
                             <div class="absolute left-3.5 top-2.5 w-3.5 h-3.5 opacity-40">
-                                <img src="/icones/Icone Buscar.png" alt="Buscar" class="w-full h-full object-contain">
+                                <svg class="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="7" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M20 20l-3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
                             </div>
                             <button id="chat-search-clear"
                                 onclick="document.getElementById('chat-search-input').value = ''; filterChatMessages(''); document.getElementById('chat-search-input').focus();"
@@ -1004,7 +1121,16 @@
                         @if($activeSolicitation)
                             @php
                                 $solicitationFiles = ($activeSolicitation && $activeSolicitation->file_path && is_array($activeSolicitation->file_path)) ? $activeSolicitation->file_path : [];
-                                $messageFiles = ($activeSolicitation && $activeSolicitation->messages) ? $activeSolicitation->messages->where('file_path', '!=', '')->whereNotNull('file_path')->pluck('file_path')->toArray() : [];
+                                $messageFiles = [];
+                                if ($activeSolicitation && $activeSolicitation->messages) {
+                                    foreach ($activeSolicitation->messages as $msg) {
+                                        foreach ($msg->files as $f) {
+                                            if (!empty($f['path']) && is_string($f['path'])) {
+                                                $messageFiles[] = $f['path'];
+                                            }
+                                        }
+                                    }
+                                }
                                 $totalAttachmentsCount = count($solicitationFiles) + count($messageFiles);
 
                                 // Limpa a descrição para exibição no chat
@@ -1022,15 +1148,15 @@
                                 $cleanDesc = trim($cleanDesc);
                             @endphp
                             <!-- Mensagem de Abertura (Descrição da Demanda) -->
-                            <div class="group flex items-center {{ auth()->user()->role === 'atendente' ? 'justify-start mr-auto' : 'justify-end ml-auto' }} gap-3 max-w-[85%] relative chat-message"
+                            <div class="group flex items-center {{ $isStaffUser ? 'justify-start mr-auto' : 'justify-end ml-auto' }} gap-3 max-w-[85%] relative chat-message"
                                 data-message-id="opening">
                                 <!-- Bubble wrapper -->
                                 <div
-                                    class="flex flex-col {{ auth()->user()->role === 'atendente' ? 'items-start' : 'items-end' }} gap-1 max-w-[90%] relative">
+                                    class="flex flex-col {{ $isStaffUser ? 'items-start' : 'items-end' }} gap-1 max-w-[90%] relative">
                                     <div
-                                        class="relative p-4 {{ auth()->user()->role === 'atendente' ? 'bg-[#EDEDED] text-gray-800 rounded-2xl rounded-tl-none border border-transparent' : 'text-white bg-[#DA291C] rounded-2xl rounded-tr-none' }} shadow-md flex flex-col gap-2 pr-8 message-bubble-content transition-all duration-300">
+                                        class="relative p-4 {{ $isStaffUser ? 'bg-[#EDEDED] text-gray-800 rounded-2xl rounded-tl-none border border-transparent' : 'text-white bg-[#DA291C] rounded-2xl rounded-tr-none' }} shadow-md flex flex-col gap-2 pr-8 message-bubble-content transition-all duration-300">
                                         <span class="message-text flex flex-col gap-1.5">
-                                            <strong class="text-sm font-extrabold block border-b pb-1 {{ auth()->user()->role === 'atendente' ? 'border-gray-300/40 text-gray-900' : 'border-white/20 text-white' }}">
+                                            <strong class="text-sm font-extrabold block border-b pb-1 {{ $isStaffUser ? 'border-gray-300/40 text-gray-900' : 'border-white/20 text-white' }}">
                                                 {{ $activeSolicitation->title }}
                                             </strong>
                                             <span class="text-xs block whitespace-pre-line leading-relaxed">
@@ -1038,7 +1164,7 @@
                                             </span>
                                         </span>
                                         <div
-                                            class="flex justify-between items-center text-[9px] font-extrabold tracking-wider {{ auth()->user()->role === 'atendente' ? 'text-gray-500 border-gray-300/30' : 'text-white/90 border-white/10' }} uppercase border-t pt-1.5 gap-4">
+                                            class="flex justify-between items-center text-[9px] font-extrabold tracking-wider {{ $isStaffUser ? 'text-gray-500 border-gray-300/30' : 'text-white/90 border-white/10' }} uppercase border-t pt-1.5 gap-4">
                                             <span
                                                 class="message-sender">{{ strtoupper($activeSolicitation->user->name ?? 'Cliente') }}</span>
                                             <span
@@ -1050,40 +1176,49 @@
 
                             <!-- Anexos de Abertura (se houver) -->
                             @if($activeSolicitation->file_path && is_array($activeSolicitation->file_path) && count($activeSolicitation->file_path) > 0)
+                                @php
+                                    $imageUrls = [];
+                                    foreach ($activeSolicitation->file_path as $path) {
+                                        $extension = pathinfo($path, PATHINFO_EXTENSION);
+                                        if (in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                                            $imageUrls[] = Storage::url($path);
+                                        }
+                                    }
+                                @endphp
                                 <div
-                                    class="flex flex-col {{ auth()->user()->role === 'atendente' ? 'items-start mr-auto' : 'items-end ml-auto' }} gap-2 max-w-[80%] mt-2 chat-message">
+                                    class="flex flex-col {{ $isStaffUser ? 'items-start mr-auto' : 'items-end ml-auto' }} gap-2 max-w-[80%] mt-2 chat-message">
                                     @foreach($activeSolicitation->file_path as $path)
                                         @php
                                             $extension = pathinfo($path, PATHINFO_EXTENSION);
                                             $isImage = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
                                         @endphp
                                         <div
-                                            class="p-3 {{ auth()->user()->role === 'atendente' ? 'bg-[#EDEDED] text-gray-800 border border-gray-300/30' : 'bg-[#DA291C] text-white' }} rounded-2xl shadow-md flex flex-col gap-2 max-w-sm">
+                                            class="p-3 {{ $isStaffUser ? 'bg-[#EDEDED] text-gray-800 border border-gray-300/30' : 'bg-[#DA291C] text-white' }} rounded-2xl shadow-md flex flex-col gap-2 max-w-sm">
                                             @if($isImage)
-                                                <a href="javascript:void(0)" onclick="openImageLightbox('{{ Storage::url($path) }}')">
+                                                <a href="javascript:void(0)" onclick="openImageLightbox('{{ Storage::url($path) }}', {{ json_encode($imageUrls) }})">
                                                     <img src="{{ Storage::url($path) }}" alt="Preview"
                                                         class="max-w-[200px] rounded-lg hover:opacity-95 transition-opacity cursor-pointer">
                                                 </a>
                                             @else
                                                 <div
-                                                    class="p-4 flex items-center gap-3 {{ auth()->user()->role === 'atendente' ? 'bg-black/5 text-gray-800' : 'bg-white/15 text-white' }} rounded-xl">
-                                                    <svg class="w-8 h-8 {{ auth()->user()->role === 'atendente' ? 'text-gray-600' : 'text-white' }}"
+                                                    class="p-4 flex items-center gap-3 {{ $isStaffUser ? 'bg-black/5 text-gray-800' : 'bg-white/15 text-white' }} rounded-xl">
+                                                    <svg class="w-8 h-8 {{ $isStaffUser ? 'text-gray-600' : 'text-white' }}"
                                                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                                                         stroke="currentColor">
                                                         <path stroke-linecap="round" stroke-linejoin="round"
                                                             d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                                                     </svg>
                                                     <div
-                                                        class="text-left {{ auth()->user()->role === 'atendente' ? 'text-gray-800' : 'text-white' }}">
+                                                        class="text-left {{ $isStaffUser ? 'text-gray-800' : 'text-white' }}">
                                                         <p class="text-xs font-bold truncate max-w-[150px]">{{ basename($path) }}</p>
                                                         <a href="{{ Storage::url($path) }}" download
-                                                            class="{{ auth()->user()->role === 'atendente' ? 'text-gray-600 hover:text-gray-850' : 'text-white hover:underline' }} text-[10px] font-bold uppercase">Baixar
+                                                            class="{{ $isStaffUser ? 'text-gray-600 hover:text-gray-850' : 'text-white hover:underline' }} text-[10px] font-bold uppercase">Baixar
                                                             arquivo</a>
                                                     </div>
                                                 </div>
                                             @endif
                                             <div
-                                                class="flex justify-between items-center text-[9px] font-extrabold tracking-wider {{ auth()->user()->role === 'atendente' ? 'text-gray-500 border-gray-300/30' : 'text-white/90 border-white/10' }} uppercase border-t pt-1.5 gap-4">
+                                                class="flex justify-between items-center text-[9px] font-extrabold tracking-wider {{ $isStaffUser ? 'text-gray-500 border-gray-300/30' : 'text-white/90 border-white/10' }} uppercase border-t pt-1.5 gap-4">
                                                 <span>{{ strtoupper($activeSolicitation->user->name ?? 'MAURO FILHO') }}</span>
                                                 <span>{{ $activeSolicitation->created_at->format('d/m - H:i') }}</span>
                                             </div>
@@ -1142,31 +1277,29 @@
                                             data-videocall-active="{{ $isEnded ? '0' : '1' }}" data-videocall-meet-url="{{ $meetUrl }}"
                                             data-videocall-is-user="{{ $isCurrentUser ? '1' : '0' }}">
                                             <div class="videocall-card {{ $isEnded ? 'ended' : '' }}">
+                                                @php
+                                                    $isAudioCall = !empty($meta['audio_only']);
+                                                    $callIconSrc = $isAudioCall ? '/icones/Icone Chamada.png' : '/icones/Icone Video Chamada.png';
+                                                @endphp
                                                 <div class="videocall-card-icon">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-6 h-6">
-                                                        <path
-                                                            d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z" />
-                                                    </svg>
+                                                    <img src="{{ $callIconSrc }}" alt="Ícone Chamada" class="w-6 h-6 object-contain filter brightness-0 invert">
                                                 </div>
                                                 <div class="videocall-card-title">
-                                                    {{ $isEnded ? 'Chamada encerrada' : 'Videochamada iniciada' }}
+                                                    {{ $isEnded ? 'Chamada encerrada' : ($isAudioCall ? 'Ligação iniciada' : 'Videochamada iniciada') }}
                                                 </div>
                                                 <div class="videocall-card-subtitle">
                                                     por {{ $initiatedBy }} &bull; {{ $msg->created_at->format('d/m - H:i') }}
                                                 </div>
                                                 @if(!$isEnded)
                                                     <button type="button" class="videocall-join-btn"
-                                                        onclick="joinVideoCall('{{ $meetUrl }}', '{{ route('videocall.join', $msg->id) }}')">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-4 h-4">
-                                                            <path
-                                                                d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z" />
-                                                        </svg>
-                                                        Entrar na Reunião
+                                                        onclick="joinVideoCall('{{ $meetUrl }}', '{{ route('videocall.join', $msg->id) }}', {{ $isAudioCall ? 'true' : 'false' }})">
+                                                        <img src="{{ $callIconSrc }}" alt="Ícone Botão" class="w-4 h-4 object-contain filter brightness-0 invert">
+                                                        {{ $isAudioCall ? 'Entrar na Ligação' : 'Entrar na Reunião' }}
                                                     </button>
 
                                                     {{-- Apenas o atendente ou o criador da chamada pode encerrar --}}
-                                                    @if(auth()->user()->role === 'atendente' || $isCurrentUser)
-                                                        <button type="button" onclick="showEndCallModal({{ $msg->id }})" class="videocall-end-btn">
+                                                    @if($isStaffUser || $isCurrentUser)
+                                                        <button type="button" onclick="showEndCallModal({{ $msg->id }}, {{ $isAudioCall ? 'true' : 'false' }})" class="videocall-end-btn">
                                                             Encerrar chamada
                                                         </button>
                                                     @endif
@@ -1192,9 +1325,55 @@
                                                 </p>
                                             </div>
                                         @endif
-                                    @else
+                                    @elseif(($msg->type ?? 'text') === 'whisper')
+                                         @if($isStaffUser)
+                                             <div class="group flex items-center justify-start mr-auto gap-3 max-w-[85%] relative chat-message my-2" data-message-id="{{ $msg->id }}" data-parent-id="{{ $msg->parent_id }}">
+                                                 <div class="flex flex-col items-start gap-1 max-w-[90%] relative">
+                                                     <div class="relative p-3.5 rounded-2xl rounded-tl-none shadow-sm flex flex-col gap-1.5 pr-7 message-bubble-content transition-all duration-300" style="background-color: #FEF3C7 !important; border: 1.5px solid #FCD34D !important; color: #78350F !important;">
+                                                         <!-- Chevron button for message options -->
+                                                         <button onclick="toggleMessageMenu(event, '{{ $msg->id }}')" class="absolute top-3 right-2.5 text-amber-800/70 hover:text-amber-950 focus:outline-none cursor-pointer transition-opacity opacity-0 group-hover:opacity-100">
+                                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                                                 <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                                             </svg>
+                                                         </button>
+
+                                                         <!-- Whisper Badge -->
+                                                         <div class="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide border-b pb-1" style="border-color: #FCD34D !important; color: #92400E !important;">
+                                                             <svg class="w-3.5 h-3.5 text-amber-700 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                             </svg>
+                                                             <span>Comentário Interno</span>
+                                                             <span class="text-[9px] font-semibold lowercase italic ml-auto mr-2" style="color: #92400E !important;">(apenas equipe)</span>
+                                                         </div>
+
+                                                         @if($msg->parent)
+                                                             <div class="px-2.5 py-1.5 rounded text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity" style="background-color: #FDE68A !important; border-left: 4px solid #D97706 !important; color: #78350F !important;" onclick="scrollToMessage('{{ $msg->parent->id }}')">
+                                                                 <span class="font-bold uppercase text-[10px] block" style="color: #451A03 !important;">{{ $msg->parent->user->name ?? 'Usuário' }}</span>
+                                                                 <span class="italic text-xs block truncate" style="color: #78350F !important;">{{ Str::limit($msg->parent->text ?? '[Anexo]', 80) }}</span>
+                                                             </div>
+                                                         @elseif(!empty($msg->metadata['is_opening']))
+                                                             <div class="px-2.5 py-1.5 rounded text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity" style="background-color: #FDE68A !important; border-left: 4px solid #D97706 !important; color: #78350F !important;" onclick="scrollToMessage('opening')">
+                                                                 <span class="font-bold uppercase text-[10px] block" style="color: #451A03 !important;">Demanda de Abertura: {{ $msg->metadata['opening_sender'] ?? 'Cliente' }}</span>
+                                                                 <span class="italic text-xs block truncate" style="color: #78350F !important;">{{ Str::limit($msg->metadata['opening_title'] ?? ($activeSolicitation->title ?? 'Chamado'), 80) }}</span>
+                                                             </div>
+                                                         @endif
+
+                                                         <div class="text-xs font-semibold leading-relaxed whitespace-pre-wrap message-text" style="color: #451A03 !important;">
+                                                             {{ $msg->text }}
+                                                         </div>
+
+                                                         <!-- Footer timestamp & author -->
+                                                         <div class="flex items-center justify-between text-[10px] font-bold pt-1 border-t mt-0.5" style="border-color: #FCD34D !important; color: #92400E !important;">
+                                                             <span class="message-sender">{{ $msg->user->name ?? 'Atendente' }}</span>
+                                                             <span class="message-time">{{ $msg->created_at->format('H:i') }}</span>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                          @endif
+                                     @else
                                         <div class="group flex items-center {{ $isCurrentUser ? 'justify-end ml-auto' : 'justify-start mr-auto' }} gap-3 max-w-[85%] relative chat-message"
-                                            data-message-id="{{ $msg->id }}">
+                                            data-message-id="{{ $msg->id }}" data-user-id="{{ $msg->user_id }}">
 
                                             @if($isCurrentUser)
                                                 <div
@@ -1260,35 +1439,45 @@
                                                         </div>
                                                     @endif
 
-                                                    @if($msg->file_path)
-                                                        @php
-                                                            $extension = pathinfo($msg->file_path, PATHINFO_EXTENSION);
-                                                            $isImage = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
-                                                        @endphp
-                                                        @if($isImage)
-                                                            <a href="javascript:void(0)"
-                                                                onclick="openImageLightbox('{{ asset('storage/' . $msg->file_path) }}')">
-                                                                <img src="{{ asset('storage/' . $msg->file_path) }}" alt="Anexo"
-                                                                    class="w-full max-w-xs object-cover rounded-xl border {{ $isCurrentUser ? 'border-white/10' : 'border-gray-300/30' }} mb-1 hover:opacity-95 transition-opacity cursor-pointer">
-                                                            </a>
-                                                        @else
-                                                            @php
-                                                                $downloadIconColor = $isCurrentUser ? 'text-white' : 'text-gray-700';
-                                                                $iconBg = $isCurrentUser ? 'bg-white/15' : 'bg-black/5';
-                                                            @endphp
-                                                            <a href="{{ asset('storage/' . $msg->file_path) }}" download="{{ $msg->file_name }}"
-                                                                class="p-3 flex items-center gap-3 {{ $iconBg }} rounded-xl mb-1 hover:opacity-95 transition-opacity">
-                                                                <svg class="w-8 h-8 {{ $downloadIconColor }}" xmlns="http://www.w3.org/2000/svg"
-                                                                    fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                                                        d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                                                </svg>
-                                                                <div class="text-left {{ $isCurrentUser ? 'text-white' : 'text-gray-800' }}">
-                                                                    <p class="text-xs font-bold truncate max-w-[150px]">{{ $msg->file_name }}</p>
-                                                                    <span class="text-[10px] font-bold opacity-80 uppercase">Download</span>
-                                                                </div>
-                                                            </a>
-                                                        @endif
+                                                    @php
+                                                        $filesList = $msg->files;
+                                                        // Coleta todas as URLs de imagem para o carrossel
+                                                        $imageUrlsInMessage = [];
+                                                        foreach ($filesList as $fItem) {
+                                                            if ($fItem['type'] === 'image') {
+                                                                $imageUrlsInMessage[] = $fItem['url'];
+                                                            }
+                                                        }
+                                                    @endphp
+                                                    @if(!empty($filesList))
+                                                        <div class="flex flex-col gap-1.5 mb-1 message-files-container" data-files="{{ json_encode($filesList) }}">
+                                                            @foreach($filesList as $fItem)
+                                                                @if($fItem['type'] === 'image')
+                                                                    <a href="javascript:void(0)"
+                                                                        onclick="openImageLightbox('{{ $fItem['url'] }}', {{ json_encode($imageUrlsInMessage) }})">
+                                                                        <img src="{{ $fItem['url'] }}" alt="Anexo"
+                                                                            class="w-full max-w-xs object-cover rounded-xl border {{ $isCurrentUser ? 'border-white/10' : 'border-gray-300/30' }} hover:opacity-95 transition-opacity cursor-pointer">
+                                                                    </a>
+                                                                @else
+                                                                    @php
+                                                                        $downloadIconColor = $isCurrentUser ? 'text-white' : 'text-gray-700';
+                                                                        $iconBg = $isCurrentUser ? 'bg-white/15' : 'bg-black/5';
+                                                                    @endphp
+                                                                    <a href="{{ $fItem['url'] }}" download="{{ $fItem['name'] }}"
+                                                                        class="p-3 flex items-center gap-3 {{ $iconBg }} rounded-xl hover:opacity-95 transition-opacity">
+                                                                        <svg class="w-8 h-8 {{ $downloadIconColor }}" xmlns="http://www.w3.org/2000/svg"
+                                                                            fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                                                        </svg>
+                                                                        <div class="text-left {{ $isCurrentUser ? 'text-white' : 'text-gray-800' }}">
+                                                                            <p class="text-xs font-bold truncate max-w-[150px]">{{ $fItem['name'] }}</p>
+                                                                            <span class="text-[10px] font-bold opacity-80 uppercase">Download</span>
+                                                                        </div>
+                                                                    </a>
+                                                                @endif
+                                                            @endforeach
+                                                        </div>
                                                     @endif
 
                                                     @if($msg->text)
@@ -1353,7 +1542,7 @@
                             <!-- Typing indicator -->
                             <div id="typing-indicator-wrapper"
                                 class="flex items-center gap-2 text-gray-400 select-none animate-pulse hidden">
-                                @if(auth()->user()->role === 'atendente')
+                                @if($isStaffUser)
                                     <div
                                         class="relative w-5 h-5 rounded-full bg-gray-150 flex items-center justify-center text-gray-650 border border-gray-200">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8"
@@ -1380,13 +1569,13 @@
                         @php
                             $closedStatuses = ['resolvida', 'nao_resolvida', 'não resolvida'];
                             $isClosedForClient = auth()->user()->role === 'user' && in_array($activeSolicitation->status, $closedStatuses, true);
-                            $isClosedForAttendant = auth()->user()->role === 'atendente' && in_array($activeSolicitation->status, $closedStatuses, true);
+                            $isClosedForAttendant = $isStaffUser && in_array($activeSolicitation->status, $closedStatuses, true);
                             $existingClientEvaluation = auth()->user()->role === 'user'
                                 ? $activeSolicitation->evaluations->firstWhere('user_id', auth()->id())
                                 : null;
                         @endphp
 
-                        @if(auth()->user()->role === 'atendente' && $activeSolicitation->status === 'na_fila')
+                        @if($isStaffUser && $activeSolicitation->status === 'na_fila')
                             <!-- Botão Iniciar Atendimento (Atendente) -->
                             <div id="iniciar-atendimento-wrapper"
                                 class="flex flex-col items-center justify-center py-4 bg-white select-none">
@@ -1418,7 +1607,7 @@
                             </div>
                         @endif
 
-                        @if(auth()->user()->role === 'atendente')
+                        @if($isStaffUser)
                             <div id="attendant-closure-wrapper" class="{{ $isClosedForAttendant ? '' : 'hidden' }} mb-3">
                                 <div class="client-closure-card" style="font-family: 'AMX', sans-serif;">
                                     <p class="attendant-closure-text">Atendimento Encerrado</p>
@@ -1475,23 +1664,22 @@
                                 </button>
                             </div>
 
-                            <!-- Attachment Preview Pill -->
-                            <div id="attachment-preview-pill"
-                                class="hidden items-center justify-between bg-white border border-gray-200 shadow-sm px-4 py-2 rounded-full text-xs font-bold text-gray-700 mb-2 w-max max-w-full animate-fade-in">
+                            <!-- Whisper Preview Pill -->
+                            <div id="whisper-preview-pill"
+                                class="hidden items-center justify-between bg-amber-100 border border-amber-300 shadow-sm px-4 py-2 rounded-full text-xs font-bold text-amber-900 mb-2 w-max max-w-full animate-fade-in">
                                 <div class="flex items-center gap-2 truncate">
-                                    <svg class="w-3.5 h-3.5 text-[#DA291C] flex-shrink-0" fill="none" viewBox="0 0 24 24"
+                                    <svg class="w-3.5 h-3.5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24"
                                         stroke="currentColor" stroke-width="2.2">
                                         <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                                            d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0zm-9 3.75h.008v.008H12v-.008z" />
                                     </svg>
-                                    <span class="truncate text-gray-650">
-                                        Anexo: <span id="attachment-filename" class="font-extrabold text-[#DA291C]"></span>
-                                        <span id="attachment-filesize"
-                                            class="text-gray-400 font-semibold text-[10px] ml-1"></span>
+                                    <span class="truncate text-amber-900">
+                                        Comentário interno para <span id="whisper-author" class="font-extrabold text-amber-950"></span>: <span id="whisper-body"
+                                            class="font-semibold italic text-amber-800"></span>
                                     </span>
                                 </div>
-                                <button type="button" onclick="cancelAttachment(event)"
-                                    class="ml-3 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer flex-shrink-0">
+                                <button type="button" onclick="cancelWhisper(event)"
+                                    class="ml-3 text-amber-600 hover:text-amber-900 focus:outline-none cursor-pointer flex-shrink-0">
                                     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                         stroke-width="2.5">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1499,14 +1687,20 @@
                                 </button>
                             </div>
 
-                            <form id="chat-input-form" onsubmit="sendChatMessage(event)"
-                                class="m-0 flex items-center justify-between gap-3 px-6 py-3 rounded-full bg-[#EDEDED] focus-within:ring-1 focus-within:ring-[#DA291C]/30 transition-all">
-                                <!-- Input de Arquivo Oculto -->
-                                <input type="file" id="chat-file-input" class="hidden" onchange="handleFileSelected(event)">
+                            <!-- Attachment Preview Pills Container -->
+                            <div id="attachment-preview-container"
+                                class="hidden flex-wrap items-center gap-2 mb-2 w-full animate-fade-in">
+                            </div>
 
-                                <input type="text" id="chat-message-input" placeholder="Digite sua mensagem"
-                                    class="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm text-gray-850 placeholder-gray-500"
-                                    style="font-family: 'AMX', sans-serif;">
+                            <form id="chat-input-form" onsubmit="sendChatMessage(event)"
+                                class="m-0 flex items-center justify-between gap-3 px-6 py-3 rounded-2xl bg-[#EDEDED] focus-within:ring-1 focus-within:ring-[#DA291C]/30 transition-all">
+                                <!-- Input de Arquivo Oculto -->
+                                <input type="file" id="chat-file-input" class="hidden" multiple onchange="handleFileSelected(event)">
+
+                                <textarea id="chat-message-input" rows="1" placeholder="Digite sua mensagem"
+                                    oninput="autoResizeChatInput()"
+                                    class="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm text-gray-850 placeholder-gray-500 resize-none overflow-y-auto py-1 chat-scroll-clean"
+                                    style="font-family: 'AMX', sans-serif; max-height: 140px; min-height: 24px; line-height: 1.4;"></textarea>
                                 <div class="flex items-center gap-3 text-gray-500 flex-shrink-0">
                                     <!-- Emoji picker trigger -->
                                     <button type="button" onclick="toggleInputEmojiPicker(event)"
@@ -1517,7 +1711,7 @@
                                                 d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
                                         </svg>
                                     </button>
-                                    @if(auth()->user()->role === 'atendente')
+                                    @if($isStaffUser)
                                         <!-- Quick Replies trigger -->
                                         <button type="button" onclick="toggleQuickRepliesMenu(event)"
                                             class="hover:text-gray-800 transition-colors focus:outline-none cursor-pointer"
@@ -1538,7 +1732,7 @@
                                                 d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
                                         </svg>
                                     </button>
-                                    <button type="submit"
+                                    <button type="submit" id="chat-send-btn"
                                         class="w-8 h-8 rounded-full bg-[#DA291C] hover:bg-[#B31D14] text-white flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95 focus:outline-none">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="2.2" stroke="currentColor"
@@ -1574,7 +1768,7 @@
                     </div>
 
                     <!-- Quick Replies Popup (Atendente) -->
-                    @if(auth()->user()->role === 'atendente')
+                    @if($isStaffUser)
                         <div id="quick-replies-menu"
                             class="fixed hidden z-[98] w-[300px] bg-[#303030] text-white rounded-2xl shadow-2xl p-3 border border-white/10 select-none animate-fade-in">
                             <div class="relative mb-2">
@@ -1714,7 +1908,7 @@
                     </div>
 
                     <!-- Checklist de Solução Modal -->
-                    @if(auth()->user()->role === 'atendente')
+                    @if($isStaffUser)
                         <div id="checklist-modal"
                             class="fixed inset-0 z-[113] hidden bg-black/60 backdrop-blur-sm items-center justify-center p-4 select-none">
                             <div id="checklist-modal-content"
@@ -1935,7 +2129,7 @@
                             </svg>
                             <span>Dados da mensagem</span>
                         </button>
-                        <button onclick="handleMenuOption('edit')"
+                        <button id="menu-edit-btn" onclick="handleMenuOption('edit')"
                             class="flex items-center gap-3 px-4 py-2 text-xs font-bold text-left hover:bg-white/10 transition-colors w-full cursor-pointer">
                             <svg class="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                 stroke-width="2.2">
@@ -1953,6 +2147,15 @@
                             </svg>
                             <span>Responder</span>
                         </button>
+                        @if($isStaffUser)
+                            <button onclick="handleMenuOption('whisper')"
+                                class="flex items-center gap-3 px-4 py-2 text-xs font-bold text-left hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-colors w-full cursor-pointer">
+                                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                                <span>Comentário Interno</span>
+                            </button>
+                        @endif
                         <button onclick="handleMenuOption('react_trigger', event)" id="menu-react-btn"
                             class="flex items-center gap-3 px-4 py-2 text-xs font-bold text-left hover:bg-white/10 transition-colors w-full cursor-pointer justify-between">
                             <div class="flex items-center gap-3">
@@ -1974,7 +2177,7 @@
                             </svg>
                             <span>Copiar</span>
                         </button>
-                        <button onclick="handleMenuOption('delete')"
+                        <button id="menu-delete-btn" onclick="handleMenuOption('delete')"
                             class="flex items-center gap-3 px-4 py-2 text-xs font-bold text-left hover:bg-white/10 text-red-400 hover:text-red-350 transition-colors w-full cursor-pointer">
                             <svg class="w-4 h-4 text-red-400/80" fill="none" viewBox="0 0 24 24" stroke="currentColor"
                                 stroke-width="2.2">
@@ -2065,152 +2268,20 @@
             <!-- COLUNA DIREITA: INFORMAÇÕES DO ATENDENTE & DOCUMENTOS -->
             @if($activeSolicitation)
                 <div
-                    class="w-[320px] lg:w-[350px] bg-white rounded-[24px] shadow-md flex flex-col border border-gray-200/80 p-6 pt-10 gap-6 flex-shrink-0 select-none overflow-y-auto hidden lg:flex chat-scroll-clean min-h-0">
-                    <div id="right-sidebar-default-content" class="contents">
-                        <!-- Info do Contato -->
-                        <div class="text-center pb-6 border-b border-gray-250">
-                            @php
-                                $rightAvatarUser = (auth()->user()->role === 'atendente') ? ($activeSolicitation->user ?? null) : ($activeSolicitation->atendente ?? null);
-                                $rightAvatarName = $rightAvatarUser ? $rightAvatarUser->name : 'Suporte Claro';
-                                $rightAvatarBg = ($rightAvatarUser && $rightAvatarUser->role === 'atendente') ? 'EAA8A8' : 'D1E7DD';
-                                $rightAvatarColor = ($rightAvatarUser && $rightAvatarUser->role === 'atendente') ? '86131E' : '0F5132';
-                            @endphp
-                            @if(!$rightAvatarUser && auth()->user()->role === 'user')
-                                <!-- Ícone de ticket padrão Claro se o cliente ainda não tiver atendente -->
-                                <div
-                                    class="w-20 h-20 rounded-full bg-white flex items-center justify-center flex-shrink-0 border p-4 shadow-sm mx-auto mb-4">
-                                    <img src="/icones/Icone Ticket.png" alt="Ticket" class="w-full h-full object-contain">
-                                </div>
-                            @else
-                                <div class="relative w-20 h-20 mx-auto mb-4 flex-shrink-0">
-                                    <img src="https://ui-avatars.com/api/?name={{ urlencode($rightAvatarName) }}&background={{ $rightAvatarBg }}&color={{ $rightAvatarColor }}&bold=true&rounded=true"
-                                        alt="Avatar" class="w-20 h-20 rounded-full object-cover border border-gray-255 shadow-sm">
-                                </div>
-                            @endif
-                            <h3 class="text-xs font-extrabold text-gray-800 uppercase tracking-wider">
-                                @if(auth()->user()->role === 'atendente')
-                                    {{ strtoupper($activeSolicitation->user->name ?? 'MAURO FILHO') }}
-                                @else
-                                    {{ strtoupper($activeSolicitation->atendente->name ?? 'SUPORTE PRISMA') }}
-                                @endif
-                            </h3>
-                        </div>
-
-                        <!-- Seção Mídias e Documentos -->
-                        <div class="flex flex-col gap-4">
-                            <div class="flex items-center justify-between">
-                                <span
-                                    class="text-xs font-extrabold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2"
-                                        stroke="currentColor" class="w-4 h-4">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375 3.75 0 1 1-.75 0 .375 3.75 0 0 1 .75 0Z" />
-                                    </svg>
-                                    Imagens e documentos
-                                </span>
-                                <span id="sidebar-attachments-count" class="text-xs font-extrabold text-gray-400">
-                                    {{ $totalAttachmentsCount ?? 0 }}
-                                </span>
-                            </div>
-
-                            <!-- Grid de Mídias (Horizontal Row) -->
-                            <div id="sidebar-attachments-container" class="flex items-center gap-2 overflow-x-auto pb-2">
-                                {{-- Arquivos da Solicitação --}}
-                                @foreach($solicitationFiles ?? [] as $path)
-                                    @php
-                                        $extension = pathinfo($path, PATHINFO_EXTENSION);
-                                        $isImage = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
-                                    @endphp
-                                    @if($isImage)
-                                        <a href="javascript:void(0)" onclick="openImageLightbox('{{ Storage::url($path) }}')"
-                                            class="w-[84px] aspect-square rounded-xl overflow-hidden border border-gray-250 hover:opacity-90 transition-all flex-shrink-0">
-                                            <img src="{{ Storage::url($path) }}" alt="Preview" class="w-full h-full object-cover">
-                                        </a>
-                                    @else
-                                        <a href="{{ Storage::url($path) }}" download
-                                            class="w-[84px] aspect-square rounded-xl bg-gray-50 flex flex-col items-center justify-center border border-gray-250 hover:bg-gray-100 transition-colors flex-shrink-0">
-                                            <svg class="w-6 h-6 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-                                                viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                    d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                            </svg>
-                                            <span class="text-[8px] font-bold text-gray-500 uppercase mt-1">DOC</span>
-                                        </a>
-                                    @endif
-                                @endforeach
-
-                                {{-- Arquivos das Mensagens --}}
-                                @foreach($messageFiles ?? [] as $path)
-                                    @php
-                                        $extension = pathinfo($path, PATHINFO_EXTENSION);
-                                        $isImage = in_array(strtolower($extension), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
-                                    @endphp
-                                    @if($isImage)
-                                        <a href="javascript:void(0)" onclick="openImageLightbox('{{ asset('storage/' . $path) }}')"
-                                            class="w-[84px] aspect-square rounded-xl overflow-hidden border border-gray-250 hover:opacity-90 transition-all flex-shrink-0">
-                                            <img src="{{ asset('storage/' . $path) }}" alt="Preview" class="w-full h-full object-cover">
-                                        </a>
-                                    @else
-                                        <a href="{{ asset('storage/' . $path) }}" download
-                                            class="w-[84px] aspect-square rounded-xl bg-gray-50 flex flex-col items-center justify-center border border-gray-250 hover:bg-gray-100 transition-colors flex-shrink-0">
-                                            <svg class="w-6 h-6 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-                                                viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                    d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                                            </svg>
-                                            <span class="text-[8px] font-bold text-gray-500 uppercase mt-1">DOC</span>
-                                        </a>
-                                    @endif
-                                @endforeach
-                            </div>
-                        </div>
-                    </div>
-
-                    @if(auth()->user()->role === 'atendente')
-                        <div id="quick-replies-editor" class="hidden flex-col gap-3 pt-1 relative flex-1 min-h-0">
-                            <button type="button" onclick="closeQuickRepliesEditor()"
-                                class="absolute top-0 right-0 text-gray-500 hover:text-gray-800 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2"
-                                    stroke="currentColor" class="w-4 h-4">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-
-                            <h4 class="text-xl leading-none font-extrabold text-[#243447] text-center mt-1">Respostas rápidas</h4>
-
-                            <div class="relative mt-1">
-                                <input id="quick-replies-editor-search" type="text" placeholder="Pesquisar"
-                                    class="w-full h-10 rounded-full border border-gray-400 bg-transparent px-4 pr-10 text-sm placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#DA291C]">
-                                <svg class="w-4 h-4 text-gray-600 absolute right-4 top-3.5" xmlns="http://www.w3.org/2000/svg"
-                                    fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                        d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
-                                </svg>
-                            </div>
-
-                            <div class="h-px bg-gray-300 my-1"></div>
-
-                            <div id="quick-replies-editor-list"
-                                class="flex flex-col gap-3 flex-1 overflow-y-auto pr-2 quick-replies-red-scroll"></div>
-
-                            <button type="button" onclick="openQuickReplyAddModal()"
-                                class="w-full h-10 rounded-xl text-white text-base font-extrabold hover:opacity-95 transition-all"
-                                style="background: linear-gradient(89.24deg, #A01724 0%, #DA291C 100%);">
-                                Adicionar resposta rápida
-                            </button>
-                        </div>
-                    @endif
-                </div>
+                    class="w-[320px] lg:w-[350px] bg-white rounded-[24px] shadow-md flex flex-col border border-gray-200/80 p-5 pt-6 gap-4 flex-shrink-0 select-none overflow-y-auto chat-scroll-clean hidden lg:flex min-h-0">
+                    <div id="right-sidebar-default-content" class="flex flex-col gap-4 flex-1 min-h-0">
+                        @include('chat._sidebar_right')
+                    </div>{{-- fecha right-sidebar-default-content --}}
+                </div>{{-- fecha sidebar col --}}
             @endif
         </div>{{-- fecha flex-1 p-6 --}}
     </div>{{-- fecha w-full flex-1 wrapper externo --}}
 
     {{-- Toast de Videochamada --}}
     <div id="videocall-toast">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0">
-            <path
-                d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z" />
-        </svg>
+        <div id="videocall-toast-icon" class="flex-shrink-0">
+            <img src="/icones/Icone Video Chamada.png" alt="Chamada" class="w-5 h-5 object-contain filter brightness-0 invert">
+        </div>
         <div>
             <div
                 style="font-size:11px;font-weight:800;letter-spacing:0.05em;color:rgba(255,255,255,0.6);text-transform:uppercase;">
@@ -2238,30 +2309,7 @@
         </div>
     </div>
 
-    <!-- Modal de Visualização de Imagem (Lightbox) -->
-    <div id="image-lightbox-modal"
-        class="hidden fixed inset-0 z-[100] bg-black/90 backdrop-blur flex flex-col items-center justify-center p-4 transition-all duration-300">
-        <button type="button" onclick="closeImageLightbox()"
-            class="absolute top-6 right-6 text-white hover:text-gray-300 transition-colors p-2 focus:outline-none cursor-pointer">
-            <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-        <div class="relative max-w-[90vw] max-h-[85vh] flex items-center justify-center">
-            <img id="lightbox-image-el" src="" alt="Visualização"
-                class="max-w-full max-h-full object-contain rounded-xl shadow-2xl border border-white/10">
-        </div>
-        <div class="mt-4 text-center">
-            <a id="lightbox-download-link" href="" download
-                class="px-5 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full text-xs font-extrabold uppercase tracking-wider transition-all inline-flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-                Baixar Imagem
-            </a>
-        </div>
-    </div>
+    <!-- Lightbox modal was relocated to app.blade.php layout root to cover entire viewport -->
 
     <!-- Modal Abrir Ticket -->
     <div id="open-ticket-modal"
@@ -2362,15 +2410,154 @@
 @section('scripts')
     <script src="https://meet.jit.si/external_api.js"></script>
     <script>
+        // ── SIDEBAR TABS ─────────────────────────────────────────
+        function switchSbTab(tab) {
+            ['info','notes','history'].forEach(t => {
+                const btn   = document.getElementById('sbtab-'+t);
+                const panel = document.getElementById('sbpanel-'+t);
+                if (!btn || !panel) return;
+                btn.classList.toggle('active', t === tab);
+                panel.classList.toggle('active', t === tab);
+            });
+        }
+
+        // ── INTERNAL NOTES ────────────────────────────────────────
+        const NOTES_STORE_URL = '/solicitations/{{ $activeSolicitation?->id }}/internal-notes';
+        const CSRF = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+        function submitInternalNote() {
+            const inp = document.getElementById('new-internal-note-input');
+            const content = inp?.value?.trim();
+            if (!content) return;
+            const btn = document.getElementById('btn-submit-internal-note');
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
+            fetch(NOTES_STORE_URL, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','X-CSRF-TOKEN':CSRF,'Accept':'application/json'},
+                body: JSON.stringify({content})
+            }).then(r=>r.json()).then(data => {
+                if (data.success) {
+                    inp.value = '';
+                    prependNoteCard(data.note);
+                    document.getElementById('notes-empty-state')?.remove();
+                }
+            }).finally(() => { btn.disabled=false; btn.textContent='+ Adicionar nota'; });
+        }
+
+        function prependNoteCard(note) {
+            const list = document.getElementById('internal-notes-list');
+            if (!list) return;
+            const div = document.createElement('div');
+            div.id = 'note-card-' + note.id;
+            div.dataset.noteId = note.id;
+            div.className = 'note-card' + (note.is_pinned ? ' pinned' : '');
+            div.innerHTML = `
+                ${note.is_pinned ? `
+                    <span class="pinned-badge absolute top-2 right-2 text-amber-500 text-[10px] font-extrabold flex items-center gap-0.5">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>Fixada</span>
+                ` : ''}
+                <p class="text-xs text-gray-800 leading-relaxed whitespace-pre-wrap pr-4">${escapeHtml(note.content)}</p>
+                <div class="flex items-center justify-between mt-2 pt-1.5 border-t border-amber-200">
+                    <div class="flex items-center gap-1.5">
+                        <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(note.author)}&background=FDE68A&color=92400E&bold=true&rounded=true&size=20" class="w-4 h-4 rounded-full" />
+                        <span class="text-[10px] font-bold text-amber-800">${escapeHtml(note.author)}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="text-[10px] text-gray-400">${note.created_at}</span>
+                        <button onclick="togglePinNote(${note.id})" title="${note.is_pinned ? 'Desafixar' : 'Fixar'}" class="btn-pin-note ml-1 text-amber-400 hover:text-amber-600 transition-colors focus:outline-none">
+                            <svg class="w-3.5 h-3.5" fill="${note.is_pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                        </button>
+                        <button onclick="deleteInternalNote(${note.id})" title="Excluir" class="text-red-300 hover:text-red-500 transition-colors focus:outline-none">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>`;
+
+            if (note.is_pinned) {
+                list.prepend(div);
+            } else {
+                const pinnedCards = list.querySelectorAll('.note-card.pinned');
+                if (pinnedCards.length > 0) {
+                    pinnedCards[pinnedCards.length - 1].after(div);
+                } else {
+                    list.prepend(div);
+                }
+            }
+        }
+
+        function togglePinNote(id) {
+            fetch(`/internal-notes/${id}/pin`, {
+                method: 'PATCH',
+                headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    const card = document.getElementById('note-card-' + id);
+                    const list = document.getElementById('internal-notes-list');
+                    if (!card || !list) return;
+
+                    const pinBtn = card.querySelector('.btn-pin-note') || card.querySelector('button[onclick*="togglePinNote"]');
+                    const pinSvg = pinBtn ? pinBtn.querySelector('svg') : null;
+
+                    if (data.is_pinned) {
+                        card.classList.add('pinned');
+                        if (pinBtn) pinBtn.title = 'Desafixar';
+                        if (pinSvg) pinSvg.setAttribute('fill', 'currentColor');
+
+                        if (!card.querySelector('.pinned-badge')) {
+                            const badge = document.createElement('span');
+                            badge.className = 'pinned-badge absolute top-2 right-2 text-amber-500 text-[10px] font-extrabold flex items-center gap-0.5';
+                            badge.innerHTML = `<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>Fixada`;
+                            card.prepend(badge);
+                        }
+
+                        // Always move the newly pinned note to position #1 (top of list)
+                        list.prepend(card);
+                    } else {
+                        card.classList.remove('pinned');
+                        if (pinBtn) pinBtn.title = 'Fixar';
+                        if (pinSvg) pinSvg.setAttribute('fill', 'none');
+
+                        card.querySelector('.pinned-badge')?.remove();
+
+                        const pinnedCards = list.querySelectorAll('.note-card.pinned');
+                        if (pinnedCards.length > 0) {
+                            pinnedCards[pinnedCards.length - 1].after(card);
+                        } else {
+                            list.prepend(card);
+                        }
+                    }
+                }
+            });
+        }
+
+        function deleteInternalNote(id) {
+            if (!confirm('Excluir esta nota?')) return;
+            fetch(`/internal-notes/${id}`, {
+                method:'DELETE',
+                headers:{'X-CSRF-TOKEN':CSRF,'Accept':'application/json'}
+            }).then(r=>r.json()).then(data => {
+                if (data.success) document.getElementById('note-card-'+id)?.remove();
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        // ─────────────────────────────────────────────────────────
+
         // Global chat state variables
         let currentMessageId = null;
         let replyingToMessage = null;
+        let whisperingToMessage = null;
         let editingMessageId = null;
-        let attachedFile = null;
+        let attachedFiles = [];
+        let editingKeepFiles = [];
+        const messageFilesData = {};
         let sidebarFilesCount = {{ $totalAttachmentsCount ?? 0 }};
         const messageReactions = {};
         let lastMessageId = {{ $activeSolicitation && $activeSolicitation->messages && $activeSolicitation->messages->isNotEmpty() ? $activeSolicitation->messages->max('id') : 0 }};
-        const isAtendenteUser = {{ \Illuminate\Support\Js::from(auth()->user()->role === 'atendente') }};
+        const isAtendenteUser = {{ \Illuminate\Support\Js::from($isStaffUser) }};
         const isClienteUser = {{ \Illuminate\Support\Js::from(auth()->user()->role === 'user') }};
         const activeSolicitationUserName = {{ \Illuminate\Support\Js::from($activeSolicitation?->user?->name ?? 'Cliente') }};
         const activeSolicitationTicket = {{ \Illuminate\Support\Js::from($activeSolicitation?->ticket_number ?? '') }};
@@ -2556,7 +2743,7 @@
                     
                     // Redireciona para o index para atualizar a lista sem o chamado que foi transferido
                     setTimeout(() => {
-                        window.location.href = "{{ auth()->user()->role === 'atendente' ? route('atendente.chat.index') : (auth()->user()->role === 'admin' ? route('admin.chat.index') : route('chat.index')) }}";
+                        window.location.href = "{{ $currentUserRole === 'admin' ? route('admin.chat.index') : ($currentUserRole === 'atendente' ? route('atendente.chat.index') : route('chat.index')) }}";
                     }, 1000);
                 } else {
                     showToast(body.message || 'Erro ao realizar a transferência.');
@@ -2863,7 +3050,26 @@
             return cleaned.startsWith('/') ? cleaned : `/${cleaned}`;
         }
 
-        function renderQuickRepliesMenu(filter = '') {
+        let activeSlashIndex = 0;
+        let isSlashMenuOpen = false;
+
+        function positionQuickRepliesMenuAboveInput() {
+            const menu = document.getElementById('quick-replies-menu');
+            const inputForm = document.getElementById('chat-input-form');
+            if (!menu || !inputForm) return;
+
+            const rect = inputForm.getBoundingClientRect();
+            const menuWidth = menu.offsetWidth || 300;
+            const menuHeight = menu.offsetHeight || 220;
+
+            const top = Math.max(16, rect.top - menuHeight - 10);
+            const left = Math.max(16, rect.left + 24);
+
+            menu.style.top = `${top}px`;
+            menu.style.left = `${left}px`;
+        }
+
+        function renderQuickRepliesMenu(filter = '', selectedIndex = -1) {
             const list = document.getElementById('quick-replies-menu-list');
             if (!list || !isAtendenteUser) return;
 
@@ -2878,16 +3084,21 @@
                 empty.className = 'text-[11px] text-white/50 py-3 text-center';
                 empty.textContent = 'Nenhuma resposta encontrada.';
                 list.appendChild(empty);
+                activeSlashIndex = 0;
                 return;
             }
 
-            replies.forEach(reply => {
+            if (selectedIndex >= replies.length) selectedIndex = replies.length - 1;
+            if (selectedIndex < 0) selectedIndex = 0;
+            activeSlashIndex = selectedIndex;
+
+            replies.forEach((reply, idx) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'w-full text-left px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors';
+                btn.className = `w-full text-left px-2 py-1.5 rounded-lg transition-colors ${idx === activeSlashIndex && isSlashMenuOpen ? 'bg-white/20 ring-1 ring-white/30' : 'hover:bg-white/10'}`;
 
                 const label = document.createElement('span');
-                label.className = 'block text-[10px] text-white/40';
+                label.className = 'block text-[10px] text-white/40 font-bold';
                 label.textContent = formatQuickReplyName(reply.name);
 
                 const text = document.createElement('span');
@@ -2896,7 +3107,10 @@
 
                 btn.appendChild(label);
                 btn.appendChild(text);
-                btn.onclick = () => applyQuickReply(reply.text);
+                btn.onclick = () => {
+                    applyQuickReply(reply.text);
+                    isSlashMenuOpen = false;
+                };
                 list.appendChild(btn);
             });
         }
@@ -2926,10 +3140,22 @@
             }
         }
 
+        function autoResizeChatInput() {
+            const input = document.getElementById('chat-message-input');
+            if (!input) return;
+            input.style.height = 'auto';
+            const newHeight = Math.min(input.scrollHeight, 140);
+            input.style.height = `${Math.max(24, newHeight)}px`;
+            if (typeof positionQuickRepliesMenuAboveInput === 'function' && isSlashMenuOpen) {
+                positionQuickRepliesMenuAboveInput();
+            }
+        }
+
         function applyQuickReply(text) {
             const input = document.getElementById('chat-message-input');
             if (!input) return;
             input.value = text;
+            autoResizeChatInput();
             input.focus();
             closeAllMenus();
         }
@@ -3265,19 +3491,97 @@
         }
 
         function initQuickReplies() {
-            if (!isAtendenteUser) return;
+            if (isAtendenteUser) {
+                const menuSearch = document.getElementById('quick-replies-search');
+                if (menuSearch) {
+                    menuSearch.addEventListener('input', function (event) {
+                        renderQuickRepliesMenu(event.target.value || '');
+                    });
+                }
 
-            const menuSearch = document.getElementById('quick-replies-search');
-            if (menuSearch) {
-                menuSearch.addEventListener('input', function (event) {
-                    renderQuickRepliesMenu(event.target.value || '');
-                });
+                const editorSearch = document.getElementById('quick-replies-editor-search');
+                if (editorSearch) {
+                    editorSearch.addEventListener('input', function (event) {
+                        renderQuickRepliesEditor(event.target.value || '');
+                    });
+                }
             }
 
-            const editorSearch = document.getElementById('quick-replies-editor-search');
-            if (editorSearch) {
-                editorSearch.addEventListener('input', function (event) {
-                    renderQuickRepliesEditor(event.target.value || '');
+            const chatInput = document.getElementById('chat-message-input');
+            const menu = document.getElementById('quick-replies-menu');
+
+            if (chatInput) {
+                chatInput.addEventListener('input', function () {
+                    autoResizeChatInput();
+                    if (isAtendenteUser && menu) {
+                        const val = chatInput.value;
+                        if (val.startsWith('/')) {
+                            const filter = val.substring(1);
+                            isSlashMenuOpen = true;
+                            renderQuickRepliesMenu(filter, 0);
+                            menu.classList.remove('hidden');
+                            positionQuickRepliesMenuAboveInput();
+                        } else {
+                            if (isSlashMenuOpen) {
+                                isSlashMenuOpen = false;
+                                menu.classList.add('hidden');
+                            }
+                        }
+                    }
+                });
+
+                chatInput.addEventListener('keydown', function (event) {
+                    if (isAtendenteUser && isSlashMenuOpen && menu && !menu.classList.contains('hidden')) {
+                        const val = chatInput.value;
+                        if (val.startsWith('/')) {
+                            const filter = val.substring(1).trim().toLowerCase();
+                            const replies = getQuickReplies().filter(reply => {
+                                return reply.name.toLowerCase().includes(filter) || reply.text.toLowerCase().includes(filter);
+                            });
+
+                            if (replies.length > 0) {
+                                if (event.key === 'ArrowDown') {
+                                    event.preventDefault();
+                                    activeSlashIndex = (activeSlashIndex + 1) % replies.length;
+                                    renderQuickRepliesMenu(filter, activeSlashIndex);
+                                    const list = document.getElementById('quick-replies-menu-list');
+                                    const buttons = list ? list.querySelectorAll('button') : [];
+                                    if (buttons[activeSlashIndex]) {
+                                        buttons[activeSlashIndex].scrollIntoView({ block: 'nearest' });
+                                    }
+                                    return;
+                                } else if (event.key === 'ArrowUp') {
+                                    event.preventDefault();
+                                    activeSlashIndex = (activeSlashIndex - 1 + replies.length) % replies.length;
+                                    renderQuickRepliesMenu(filter, activeSlashIndex);
+                                    const list = document.getElementById('quick-replies-menu-list');
+                                    const buttons = list ? list.querySelectorAll('button') : [];
+                                    if (buttons[activeSlashIndex]) {
+                                        buttons[activeSlashIndex].scrollIntoView({ block: 'nearest' });
+                                    }
+                                    return;
+                                } else if (event.key === 'Enter' || event.key === 'Tab') {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    if (replies[activeSlashIndex]) {
+                                        applyQuickReply(replies[activeSlashIndex].text);
+                                    }
+                                    isSlashMenuOpen = false;
+                                    menu.classList.add('hidden');
+                                    return;
+                                } else if (event.key === 'Escape') {
+                                    isSlashMenuOpen = false;
+                                    menu.classList.add('hidden');
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        sendChatMessage(event);
+                    }
                 });
             }
         }
@@ -3667,7 +3971,10 @@
         function addFileToSidebar(file) {
             const container = document.getElementById('sidebar-attachments-container');
             const countEl = document.getElementById('sidebar-attachments-count');
+            const noAttachmentsMsg = document.getElementById('sidebar-no-attachments-msg');
             if (!container) return;
+
+            if (noAttachmentsMsg) noAttachmentsMsg.classList.add('hidden');
 
             sidebarFilesCount++;
             if (countEl) countEl.textContent = sidebarFilesCount;
@@ -3760,6 +4067,8 @@
                     const msgId = msgEl.getAttribute('data-message-id');
                     currentMessageId = msgId;
 
+                    updateContextMenuVisibility(msgId);
+
                     const menu = document.getElementById('message-context-menu');
                     closeAllMenus();
 
@@ -3785,6 +4094,19 @@
                 });
             }
         });
+
+        function updateContextMenuVisibility(msgId) {
+            const msgEl = document.querySelector(`[data-message-id="${msgId}"]`);
+            const currentUserId = {{ auth()->id() }};
+            const msgUserId = msgEl ? msgEl.getAttribute('data-user-id') : null;
+            const isOwn = msgUserId ? (parseInt(msgUserId, 10) === currentUserId) : (msgEl && msgEl.classList.contains('justify-end'));
+
+            const editBtn = document.getElementById('menu-edit-btn');
+            const deleteBtn = document.getElementById('menu-delete-btn');
+
+            if (editBtn) editBtn.classList.toggle('hidden', !isOwn);
+            if (deleteBtn) deleteBtn.classList.toggle('hidden', !isOwn);
+        }
 
         // Close menus on click outside
         window.addEventListener('click', function (e) {
@@ -3840,6 +4162,7 @@
             closeAllMenus();
 
             if (isHidden) {
+                updateContextMenuVisibility(msgId);
                 const rect = event.currentTarget.getBoundingClientRect();
                 menu.classList.remove('hidden');
 
@@ -3957,6 +4280,16 @@
             const timeSpan = msgEl.querySelector('.message-time');
             const time = timeSpan ? timeSpan.textContent.trim() : '';
 
+            if (option === 'edit' || option === 'delete') {
+                const currentUserId = {{ auth()->id() }};
+                const msgUserId = msgEl ? msgEl.getAttribute('data-user-id') : null;
+                const isOwn = msgUserId ? (parseInt(msgUserId, 10) === currentUserId) : (msgEl && msgEl.classList.contains('justify-end'));
+                if (!isOwn) {
+                    closeAllMenus();
+                    return;
+                }
+            }
+
             if (option === 'info') {
                 document.getElementById('info-modal-sender').textContent = sender;
                 document.getElementById('info-modal-time').textContent = time;
@@ -3975,17 +4308,78 @@
                 editingMessageId = currentMessageId;
                 cancelReply(); // Clear reply if editing
 
+                const msgEl = document.querySelector(`[data-message-id="${editingMessageId}"]`);
+                const extracted = [];
+                if (msgEl) {
+                    const filesContainer = msgEl.querySelector('.message-files-container');
+                    if (filesContainer) {
+                        if (filesContainer.dataset.files) {
+                            try {
+                                const parsedFiles = JSON.parse(filesContainer.dataset.files);
+                                parsedFiles.forEach(f => {
+                                    let p = f.path || f.url || '';
+                                    p = p.replace(/^https?:\/\/[^\/]+\/storage\//, '').replace(/^\/storage\//, '');
+                                    let n = f.name;
+                                    if (!n || n.startsWith('javascript:')) n = p.split('/').pop() || 'Arquivo';
+                                    if (p && !p.startsWith('javascript:')) {
+                                        extracted.push({ path: p, name: n, url: f.url || `/storage/${p}` });
+                                    }
+                                });
+                            } catch (e) {
+                                console.error('Error parsing files dataset:', e);
+                            }
+                        }
+
+                        if (extracted.length === 0) {
+                            const fileLinks = filesContainer.querySelectorAll('a[download], a[onclick*="openImageLightbox"], a');
+                            fileLinks.forEach(link => {
+                                let path = link.getAttribute('href') || '';
+                                const img = link.querySelector('img');
+                                if (img && img.getAttribute('src')) {
+                                    path = img.getAttribute('src');
+                                } else if (path.startsWith('javascript:')) {
+                                    const match = link.getAttribute('onclick')?.match(/openImageLightbox\(\s*['"]([^'"]+)['"]/);
+                                    if (match) path = match[1];
+                                }
+                                if (!path || path.startsWith('javascript:')) return;
+
+                                path = path.replace(/^https?:\/\/[^\/]+\/storage\//, '').replace(/^\/storage\//, '');
+                                let name = link.getAttribute('download') || '';
+                                if (!name || name.startsWith('javascript:')) {
+                                    const nameSpan = link.querySelector('.truncate');
+                                    if (nameSpan) name = nameSpan.textContent.trim();
+                                }
+                                if (!name || name.startsWith('javascript:')) {
+                                    name = path.split('/').pop() || 'Arquivo';
+                                }
+                                extracted.push({
+                                    path: path,
+                                    name: name,
+                                    url: link.href && !link.href.startsWith('javascript:') ? link.href : `/storage/${path}`
+                                });
+                            });
+                        }
+                    }
+                }
+                messageFilesData[editingMessageId] = extracted;
+                editingKeepFiles = Array.from(messageFilesData[editingMessageId] || []);
+
                 const input = document.getElementById('chat-message-input');
                 input.value = text;
                 input.focus();
 
-                document.getElementById('edit-body').textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
+                const displayText = text ? (text.length > 50 ? text.substring(0, 50) + '...' : text) : '[Anexo]';
+                document.getElementById('edit-body').textContent = displayText;
                 document.getElementById('edit-preview-pill').classList.remove('hidden');
                 document.getElementById('edit-preview-pill').classList.add('flex');
+
+                renderAttachmentPreviews();
 
                 closeAllMenus();
             } else if (option === 'reply') {
                 replyToMessage(currentMessageId);
+            } else if (option === 'whisper') {
+                whisperToMessage(currentMessageId);
             } else if (option === 'react_trigger') {
                 const reactBtn = document.getElementById('menu-react-btn');
                 const btnRect = reactBtn.getBoundingClientRect();
@@ -4050,6 +4444,7 @@
         // Set reply state
         function replyToMessage(msgId) {
             cancelEdit(); // Clear edit if replying
+            cancelWhisper(); // Clear whisper if replying
 
             replyingToMessage = msgId;
             const msgEl = document.querySelector(`[data-message-id="${msgId}"]`);
@@ -4077,13 +4472,87 @@
             document.getElementById('reply-preview-pill').classList.add('hidden');
         }
 
+        // Set whisper (internal note) state
+        function whisperToMessage(msgId) {
+            cancelEdit();
+            cancelReply();
+
+            whisperingToMessage = msgId;
+            const msgEl = document.querySelector(`[data-message-id="${msgId}"]`);
+            let sender = 'Mensagem';
+            let text = '';
+
+            if (msgEl) {
+                const senderSpan = msgEl.querySelector('.message-sender');
+                if (senderSpan) sender = senderSpan.textContent.trim();
+                const textSpan = msgEl.querySelector('.message-text');
+                if (textSpan) text = textSpan.textContent.trim();
+            }
+
+            const authorEl = document.getElementById('whisper-author');
+            const bodyEl = document.getElementById('whisper-body');
+            if (authorEl) authorEl.textContent = sender;
+            if (bodyEl) bodyEl.textContent = text ? (text.length > 50 ? text.substring(0, 50) + '...' : text) : '[Anexo]';
+
+            const pill = document.getElementById('whisper-preview-pill');
+            if (pill) {
+                pill.classList.remove('hidden');
+                pill.classList.add('flex');
+            }
+
+            const form = document.getElementById('chat-input-form');
+            if (form) {
+                form.style.backgroundColor = '#FEF3C7';
+                form.style.border = '1.5px solid #FCD34D';
+            }
+            const sendBtn = document.getElementById('chat-send-btn');
+            if (sendBtn) {
+                sendBtn.style.backgroundColor = '#D97706';
+            }
+
+            const input = document.getElementById('chat-message-input');
+            if (input) {
+                input.placeholder = 'Digite um comentário interno (visível apenas para a equipe)...';
+                input.focus();
+            }
+            closeAllMenus();
+        }
+
+        // Cancel whisper state
+        function cancelWhisper(event) {
+            if (event) event.stopPropagation();
+            whisperingToMessage = null;
+            const pill = document.getElementById('whisper-preview-pill');
+            if (pill) {
+                pill.classList.remove('flex');
+                pill.classList.add('hidden');
+            }
+
+            const form = document.getElementById('chat-input-form');
+            if (form) {
+                form.style.backgroundColor = '';
+                form.style.border = '';
+            }
+            const sendBtn = document.getElementById('chat-send-btn');
+            if (sendBtn) {
+                sendBtn.style.backgroundColor = '';
+            }
+
+            const input = document.getElementById('chat-message-input');
+            if (input) {
+                input.placeholder = 'Digite sua mensagem';
+            }
+        }
+
         // Cancel edit state
         function cancelEdit(event) {
             if (event) event.stopPropagation();
             editingMessageId = null;
+            editingKeepFiles = [];
             document.getElementById('edit-preview-pill').classList.remove('flex');
             document.getElementById('edit-preview-pill').classList.add('hidden');
             document.getElementById('chat-message-input').value = '';
+            cancelAttachment();
         }
 
         // Toggle input emoji picker
@@ -4113,6 +4582,7 @@
             const input = document.getElementById('chat-message-input');
             if (input) {
                 input.value += emoji;
+                autoResizeChatInput();
                 input.focus();
             }
             closeAllMenus();
@@ -4124,44 +4594,119 @@
             if (fileInput) fileInput.click();
         }
 
-        // Handle file selection from filesystem
+        // Handle file selection from filesystem (multiple up to 5)
         function handleFileSelected(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+            const selected = Array.from(event.target.files || []);
+            if (!selected.length) return;
 
-            attachedFile = file;
-
-            let sizeStr = '';
-            if (file.size < 1024 * 1024) {
-                sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
-            } else {
-                sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+            const totalCount = (editingMessageId ? editingKeepFiles.length : 0) + attachedFiles.length + selected.length;
+            if (totalCount > 5) {
+                showToast("Máximo de 5 anexos permitidos por mensagem.");
+                event.target.value = '';
+                return;
             }
 
-            const filenameEl = document.getElementById('attachment-filename');
-            const filesizeEl = document.getElementById('attachment-filesize');
-            const previewEl = document.getElementById('attachment-preview-pill');
+            attachedFiles = attachedFiles.concat(selected);
+            renderAttachmentPreviews();
+            event.target.value = '';
+        }
 
-            if (filenameEl) filenameEl.textContent = file.name;
-            if (filesizeEl) filesizeEl.textContent = `(${sizeStr})`;
-            if (previewEl) {
-                previewEl.classList.remove('hidden');
-                previewEl.classList.add('flex');
+        function removeAttachedFile(index, event) {
+            if (event) event.stopPropagation();
+            attachedFiles.splice(index, 1);
+            renderAttachmentPreviews();
+        }
+
+        function removeEditingKeepFile(index, event) {
+            if (event) event.stopPropagation();
+            editingKeepFiles.splice(index, 1);
+            renderAttachmentPreviews();
+        }
+
+        function renderAttachmentPreviews() {
+            const container = document.getElementById('attachment-preview-container');
+            if (!container) return;
+            const totalItems = (editingMessageId ? editingKeepFiles.length : 0) + attachedFiles.length;
+            if (totalItems === 0) {
+                container.classList.add('hidden');
+                container.classList.remove('flex');
+                container.innerHTML = '';
+                return;
             }
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+
+            let html = '';
+
+            // Render existing files (if in edit mode)
+            if (editingMessageId && editingKeepFiles.length > 0) {
+                editingKeepFiles.forEach((file, index) => {
+                    const name = file.name || 'Arquivo';
+                    const imgUrl = file.url || (file.path ? `/storage/${file.path}` : '');
+                    const isImage = (imgUrl && imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) || (name && name.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+                    const iconOrImg = isImage
+                        ? `<img src="${imgUrl}" onclick="openImageLightbox('${imgUrl}')" class="w-6 h-6 object-cover rounded-md border border-gray-300 flex-shrink-0 cursor-pointer hover:opacity-85 transition-opacity" alt="${name}">`
+                        : `<svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                               <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                           </svg>`;
+
+                    html += `
+                        <div class="flex items-center justify-between bg-gray-100 border border-gray-300 shadow-sm px-3 py-1.5 rounded-full text-xs font-bold text-gray-700 max-w-full gap-2">
+                            <div class="flex items-center gap-2 truncate">
+                                ${iconOrImg}
+                                <span class="truncate text-gray-700">
+                                    <span class="font-bold text-gray-700">${name}</span>
+                                    <span class="text-gray-400 font-semibold text-[10px] ml-1">(Existente)</span>
+                                </span>
+                            </div>
+                            <button type="button" onclick="removeEditingKeepFile(${index}, event)" class="ml-2 text-gray-400 hover:text-red-500 focus:outline-none cursor-pointer flex-shrink-0" title="Remover anexo">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                });
+            }
+
+            // Render new attached files
+            attachedFiles.forEach((file, index) => {
+                let sizeStr = file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+                const isImage = file.type && file.type.startsWith('image/');
+                const imgUrl = isImage ? URL.createObjectURL(file) : '';
+                const iconOrImg = isImage
+                    ? `<img src="${imgUrl}" onclick="openImageLightbox('${imgUrl}')" class="w-6 h-6 object-cover rounded-md border border-gray-200 flex-shrink-0 cursor-pointer hover:opacity-85 transition-opacity" alt="${file.name}">`
+                    : `<svg class="w-3.5 h-3.5 text-[#DA291C] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                           <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                       </svg>`;
+
+                html += `
+                    <div class="flex items-center justify-between bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-full text-xs font-bold text-gray-700 max-w-full gap-2">
+                        <div class="flex items-center gap-2 truncate">
+                            ${iconOrImg}
+                            <span class="truncate text-gray-650">
+                                <span class="font-extrabold text-[#DA291C]">${file.name}</span>
+                                <span class="text-gray-400 font-semibold text-[10px] ml-1">(${sizeStr})</span>
+                            </span>
+                        </div>
+                        <button type="button" onclick="removeAttachedFile(${index}, event)" class="ml-2 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer flex-shrink-0" title="Remover anexo">
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
         }
 
         // Cancel / Remove attachment
         function cancelAttachment(event) {
             if (event) event.stopPropagation();
-            attachedFile = null;
+            attachedFiles = [];
             const fileInput = document.getElementById('chat-file-input');
             if (fileInput) fileInput.value = '';
-
-            const previewEl = document.getElementById('attachment-preview-pill');
-            if (previewEl) {
-                previewEl.classList.remove('flex');
-                previewEl.classList.add('hidden');
-            }
+            renderAttachmentPreviews();
         }
 
         // Generate HTML for attachment bubbles
@@ -4399,9 +4944,11 @@
         @endif
         @if($activeSolicitation && $activeSolicitation->messages)
             @foreach($activeSolicitation->messages as $msg)
-                @if($msg->file_path)
-                    addedFileUrls.add("{{ asset('storage/' . $msg->file_path) }}");
-                @endif
+                @foreach($msg->files as $f)
+                    @if(!empty($f['url']))
+                        addedFileUrls.add("{{ $f['url'] }}");
+                    @endif
+                @endforeach
             @endforeach
         @endif
 
@@ -4461,6 +5008,10 @@
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
 
+            if (msg.id) {
+                messageFilesData[msg.id] = msg.files || [];
+            }
+
             // Check if message is already in DOM
             let existingMsgEl = document.querySelector(`[data-message-id="${msg.id}"]`);
             if (existingMsgEl) {
@@ -4490,14 +5041,38 @@
                         `;
                     }
                 } else {
-                    // Update text/time if changed
-                    const textSpan = existingMsgEl.querySelector('.message-text');
-                    if (textSpan && msg.text && textSpan.textContent !== msg.text) {
-                        textSpan.textContent = msg.text;
+                    // Update text/time/files if changed
+                    let textSpan = existingMsgEl.querySelector('.message-text');
+                    const bubbleContent = existingMsgEl.querySelector('.message-bubble-content');
+                    if (msg.text) {
+                        if (textSpan) {
+                            textSpan.textContent = msg.text;
+                        } else if (bubbleContent) {
+                            textSpan = document.createElement('span');
+                            textSpan.className = 'message-text';
+                            textSpan.textContent = msg.text;
+                            bubbleContent.appendChild(textSpan);
+                        }
+                    } else if (textSpan) {
+                        textSpan.remove();
                     }
+
                     const timeSpan = existingMsgEl.querySelector('.message-time');
                     if (timeSpan && timeSpan.textContent !== msg.time) {
                         timeSpan.textContent = msg.time;
+                    }
+                    let filesContainer = existingMsgEl.querySelector('.message-files-container');
+                    if (msg.files && msg.files.length > 0) {
+                        if (bubbleContent) {
+                            if (!filesContainer) {
+                                filesContainer = document.createElement('div');
+                                filesContainer.className = 'flex flex-col gap-1.5 mb-1 message-files-container';
+                                bubbleContent.insertBefore(filesContainer, bubbleContent.firstChild);
+                            }
+                            filesContainer.outerHTML = buildFilesHtml(msg.files, msg.is_user);
+                        }
+                    } else if (filesContainer) {
+                        filesContainer.remove();
                     }
                 }
                 // Reapply search filter if active
@@ -4515,6 +5090,42 @@
                 messageReactions[msg.id] = msg.reactions;
                 renderReactions(msg.id);
                 return;
+            }
+
+            // Helper function to build HTML for message files
+            function buildFilesHtml(files, isCurrentUser) {
+                if (!files || !Array.isArray(files) || files.length === 0) return '';
+                const jsonStr = escapeHtml(JSON.stringify(files));
+                let html = `<div class="flex flex-col gap-1.5 mb-1 message-files-container" data-files="${jsonStr}">`;
+                files.forEach(f => {
+                    const url = f.url || (f.path ? `/storage/${f.path}` : '');
+                    const name = f.name || 'Arquivo';
+                    const type = f.type || (url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? 'image' : 'document');
+                    if (type === 'image') {
+                        html += `
+                            <a href="javascript:void(0)" onclick="openImageLightbox('${url}')">
+                                <img src="${url}" alt="Anexo" class="w-full max-w-xs object-cover rounded-xl border ${isCurrentUser ? 'border-white/10' : 'border-gray-300/30'} hover:opacity-95 transition-opacity cursor-pointer">
+                            </a>
+                        `;
+                    } else {
+                        const downloadIconColor = isCurrentUser ? 'text-white' : 'text-gray-700';
+                        const iconBg = isCurrentUser ? 'bg-white/15' : 'bg-black/5';
+                        html += `
+                            <a href="${url}" download="${name}" class="p-3 flex items-center gap-3 ${iconBg} rounded-xl hover:opacity-95 transition-opacity">
+                                <svg class="w-8 h-8 ${downloadIconColor}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                                </svg>
+                                <div class="text-left ${isCurrentUser ? 'text-white' : 'text-gray-800'}">
+                                    <p class="text-xs font-bold truncate max-w-[150px]">${name}</p>
+                                    <span class="text-[10px] font-bold opacity-80 uppercase">Download</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                    addFileUrlToSidebar(url, name, type);
+                });
+                html += '</div>';
+                return html;
             }
 
             // Create new message DOM element
@@ -4551,24 +5162,25 @@
                         </div>
                     `;
                 } else {
+                    const isAudioCall = meta && (meta.audio_only === true || meta.audio_only === "true" || meta.audio_only === 1 || meta.audio_only === "1");
+                    const cardTitleText = isAudioCall ? 'Ligação iniciada' : 'Videochamada iniciada';
+                    const joinBtnText = isAudioCall ? 'Entrar na Ligação' : 'Entrar na Reunião';
+                    const callIconSrc = isAudioCall ? '/icones/Icone Chamada.png' : '/icones/Icone Video Chamada.png';
+
                     const endButtonHtml = (isAtendenteUser || isCurrentUser)
-                        ? `<button type="button" onclick="showEndCallModal(${msg.id})" class="videocall-end-btn">Encerrar chamada</button>`
+                        ? `<button type="button" onclick="showEndCallModal(${msg.id}, ${isAudioCall ? 'true' : 'false'})" class="videocall-end-btn">Encerrar chamada</button>`
                         : '';
 
                     wrapper.innerHTML = `
                         <div class="videocall-card">
                             <div class="videocall-card-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-6 h-6">
-                                    <path d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z"/>
-                                </svg>
+                                <img src="${callIconSrc}" alt="Ícone Chamada" class="w-6 h-6 object-contain filter brightness-0 invert">
                             </div>
-                            <div class="videocall-card-title">Videochamada iniciada</div>
+                            <div class="videocall-card-title">${cardTitleText}</div>
                             <div class="videocall-card-subtitle">por ${initiatedBy} &bull; ${msg.time || ''}</div>
-                            <button type="button" onclick="joinVideoCall('${meetUrl}', '/videocall/${msg.id}/join')" class="videocall-join-btn">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-4 h-4">
-                                    <path d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z"/>
-                                </svg>
-                                Entrar na Reunião
+                            <button type="button" onclick="joinVideoCall('${meetUrl}', '/videocall/${msg.id}/join', ${isAudioCall ? 'true' : 'false'})" class="videocall-join-btn">
+                                <img src="${callIconSrc}" alt="Ícone Botão" class="w-4 h-4 object-contain filter brightness-0 invert">
+                                ${joinBtnText}
                             </button>
                             ${endButtonHtml}
                         </div>
@@ -4616,6 +5228,74 @@
                 if (msg.id > lastMessageId) lastMessageId = msg.id;
                 return;
             }
+            // === WHISPER / INTERNAL NOTE MESSAGE ===
+            if (msg.type === 'whisper') {
+                const currentUserRole = "{{ auth()->user()->role }}";
+                if (currentUserRole === 'atendente' || currentUserRole === 'admin') {
+                    wrapper.className = 'group flex items-center justify-start mr-auto gap-3 max-w-[85%] relative chat-message my-2 animate-fade-in';
+                    const parentId = msg.parent_id || (msg.parent ? msg.parent.id : null);
+                    if (parentId) wrapper.setAttribute('data-parent-id', parentId);
+
+                    let parentQuoteHtml = '';
+                    if (msg.parent && (msg.parent.text || msg.parent.sender)) {
+                        const parentSender = msg.parent.sender || 'Usuário';
+                        const parentText = msg.parent.text ? (msg.parent.text.length > 80 ? msg.parent.text.substring(0, 80) + '...' : msg.parent.text) : '[Anexo]';
+                        parentQuoteHtml = `
+                            <div class="px-2.5 py-1.5 rounded text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity" style="background-color: #FDE68A !important; border-left: 4px solid #D97706 !important; color: #78350F !important;" onclick="scrollToMessage('${msg.parent.id || parentId}')">
+                                <span class="font-bold uppercase text-[10px] block" style="color: #451A03 !important;">${parentSender}</span>
+                                <span class="italic text-xs block truncate" style="color: #78350F !important;">${parentText}</span>
+                            </div>
+                        `;
+                    } else if (msg.metadata && msg.metadata.is_opening) {
+                        const openingSender = msg.metadata.opening_sender || 'Cliente';
+                        const openingTitle = msg.metadata.opening_title || 'Demanda Inicial';
+                        parentQuoteHtml = `
+                            <div class="px-2.5 py-1.5 rounded text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity" style="background-color: #FDE68A !important; border-left: 4px solid #D97706 !important; color: #78350F !important;" onclick="scrollToMessage('opening')">
+                                <span class="font-bold uppercase text-[10px] block" style="color: #451A03 !important;">Demanda de Abertura: ${openingSender}</span>
+                                <span class="italic text-xs block truncate" style="color: #78350F !important;">${openingTitle}</span>
+                            </div>
+                        `;
+                    }
+                    wrapper.innerHTML = `
+                        <div class="flex flex-col items-start gap-1 max-w-[90%] relative">
+                            <div class="relative p-3.5 rounded-2xl rounded-tl-none shadow-sm flex flex-col gap-1.5 pr-7 message-bubble-content transition-all duration-300" style="background-color: #FEF3C7 !important; border: 1.5px solid #FCD34D !important; color: #78350F !important;">
+                                <button onclick="toggleMessageMenu(event, '${msg.id}')" class="absolute top-3 right-2.5 text-amber-700/70 hover:text-amber-900 focus:outline-none cursor-pointer transition-opacity opacity-0 group-hover:opacity-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <div class="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide border-b pb-1" style="border-color: #FCD34D !important; color: #92400E !important;">
+                                    <svg class="w-3.5 h-3.5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                    </svg>
+                                    <span>Comentário Interno</span>
+                                    <span class="text-[9px] font-semibold lowercase italic ml-auto mr-2" style="color: #92400E !important;">(apenas equipe)</span>
+                                </div>
+                                ${parentQuoteHtml}
+                                <div class="text-xs font-semibold leading-relaxed whitespace-pre-wrap message-text" style="color: #451A03 !important;">
+                                    ${msg.text || ''}
+                                </div>
+                                <div class="flex items-center justify-between text-[10px] font-bold pt-1 border-t mt-0.5" style="border-color: #FCD34D !important; color: #92400E !important;">
+                                    <span>${msg.sender || 'Atendente'}</span>
+                                    <span>${msg.time || ''}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    return;
+                }
+
+                // Posicionamento: insere sequencialmente no fluxo do chat (no final da lista ou antes do indicador de digitação)
+                const typingIndicatorWhisper = document.getElementById('typing-indicator-wrapper');
+                if (typingIndicatorWhisper && typingIndicatorWhisper.parentNode === container) {
+                    container.insertBefore(wrapper, typingIndicatorWhisper);
+                } else {
+                    container.appendChild(wrapper);
+                }
+                if (msg.id > lastMessageId) lastMessageId = msg.id;
+                return;
+            }
 
             const isCurrentUser = msg.is_user;
             const textClass = isCurrentUser ? 'text-white bg-[#DA291C] rounded-2xl rounded-tr-none' : 'bg-[#EDEDED] text-gray-800 rounded-2xl rounded-tl-none border border-transparent';
@@ -4636,34 +5316,9 @@
                 `;
             }
 
-            // Build File HTML if file_url exists
-            let fileHtml = '';
-            if (msg.file_url) {
-                if (msg.file_type === 'image') {
-                    fileHtml = `
-                        <a href="javascript:void(0)" onclick="openImageLightbox('${msg.file_url}')">
-                            <img src="${msg.file_url}" alt="Anexo" class="w-full max-w-xs object-cover rounded-xl border ${isCurrentUser ? 'border-white/10' : 'border-gray-300/30'} mb-1 hover:opacity-95 transition-opacity cursor-pointer">
-                        </a>
-                    `;
-                } else {
-                    const downloadIconColor = isCurrentUser ? 'text-white' : 'text-gray-700';
-                    const iconBg = isCurrentUser ? 'bg-white/15' : 'bg-black/5';
-                    fileHtml = `
-                        <a href="${msg.file_url}" download="${msg.file_name}" class="p-3 flex items-center gap-3 ${iconBg} rounded-xl mb-1 hover:opacity-95 transition-opacity">
-                            <svg class="w-8 h-8 ${downloadIconColor}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                            </svg>
-                            <div class="text-left ${isCurrentUser ? 'text-white' : 'text-gray-800'}">
-                                <p class="text-xs font-bold truncate max-w-[150px]">${msg.file_name}</p>
-                                <span class="text-[10px] font-bold opacity-80 uppercase">Download</span>
-                            </div>
-                        </a>
-                    `;
-                }
-
-                // Dynamically add file to sidebar
-                addFileUrlToSidebar(msg.file_url, msg.file_name, msg.file_type);
-            }
+            // Build File HTML if files exist
+            const msgFiles = msg.files || (msg.file_url ? [{ url: msg.file_url, name: msg.file_name, type: msg.file_type }] : []);
+            let fileHtml = buildFilesHtml(msgFiles, isCurrentUser);
 
             // Build main text content
             let textHtml = msg.text ? `<span class="message-text">${msg.text}</span>` : '';
@@ -4766,11 +5421,11 @@
         }
 
         // =========================================================
-        // VIDEOCHAMADA: Initiate video call via API
-        function initiateVideoCall(solicitationId) {
+        // VIDEOCHAMADA & CHAMADA DE VOZ: Initiate call via API
+        function initiateVideoCall(solicitationId, isAudioOnly = false) {
             const activeCall = document.querySelector('[data-videocall-active="1"]');
             if (activeCall) {
-                showToast('Já existe uma chamada de vídeo ativa para este chamado. Encerre a chamada atual antes de iniciar outra.');
+                showToast('Já existe uma chamada ativa para este chamado. Encerre a chamada atual antes de iniciar outra.');
                 return;
             }
 
@@ -4781,12 +5436,12 @@
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({ solicitation_id: solicitationId })
+                body: JSON.stringify({ solicitation_id: solicitationId, audio_only: !!isAudioOnly })
             })
                 .then(async (response) => {
                     const data = await response.json();
                     if (!response.ok || !data.success) {
-                        throw new Error(data.error || 'Não foi possível iniciar videochamada.');
+                        throw new Error(data.error || 'Não foi possível iniciar a chamada.');
                     }
                     return data;
                 })
@@ -4796,21 +5451,27 @@
                     }
 
                     if (data.meet_url) {
-                        showVideoCallToast(data.meet_url, data.join_url || null);
+                        showVideoCallToast(data.meet_url, data.join_url || null, isAudioOnly);
+                        joinVideoCall(data.meet_url, data.join_url || null, isAudioOnly);
                     }
                 })
                 .catch((error) => {
                     console.error(error);
-                    showToast(error.message || 'Erro ao iniciar videochamada.');
+                    showToast(error.message || 'Erro ao iniciar chamada.');
                 });
         }
 
-        function showVideoCallToast(meetUrl, joinUrl = null) {
+        function showVideoCallToast(meetUrl, joinUrl = null, isAudioOnly = false) {
             let toast = document.getElementById('videocall-toast');
             if (!toast) return;
+            const toastTitle = document.getElementById('videocall-toast-title');
+            if (toastTitle) {
+                toastTitle.textContent = isAudioOnly ? 'Ligação Ativa' : 'Videochamada Ativa';
+            }
             const enterBtn = toast.querySelector('.vc-toast-link');
             if (enterBtn) {
-                enterBtn.onclick = () => joinVideoCall(meetUrl, joinUrl || meetUrl);
+                enterBtn.onclick = () => joinVideoCall(meetUrl, joinUrl || meetUrl, isAudioOnly);
+                enterBtn.textContent = isAudioOnly ? 'Entrar na Ligação' : 'Entrar agora';
             }
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 6000);
@@ -4826,7 +5487,7 @@
             }
         }
 
-        function joinVideoCall(meetUrl, fallbackUrl = null) {
+        function joinVideoCall(meetUrl, fallbackUrl = null, isAudioOnly = false) {
             const targetUrl = fallbackUrl || meetUrl;
             if (!targetUrl) return;
 
@@ -4847,7 +5508,7 @@
                     .then(data => {
                         const authorizedUrl = data.url || meetUrl;
                         if (isJitsiUrl(authorizedUrl)) {
-                            openJitsiModal(authorizedUrl);
+                            openJitsiModal(authorizedUrl, isAudioOnly);
                         } else {
                             window.open(authorizedUrl, '_blank', 'noopener,noreferrer');
                         }
@@ -4855,21 +5516,21 @@
                     .catch(error => {
                         console.error(error);
                         if (isJitsiUrl(meetUrl)) {
-                            openJitsiModal(meetUrl);
+                            openJitsiModal(meetUrl, isAudioOnly);
                         } else {
                             window.open(meetUrl, '_blank', 'noopener,noreferrer');
                         }
                     });
             } else {
                 if (isJitsiUrl(meetUrl)) {
-                    openJitsiModal(meetUrl);
+                    openJitsiModal(meetUrl, isAudioOnly);
                 } else {
                     window.open(meetUrl, '_blank', 'noopener,noreferrer');
                 }
             }
         }
 
-        function openJitsiModal(meetUrl) {
+        function openJitsiModal(meetUrl, isAudioOnly = false) {
             const modal = document.getElementById('jitsi-modal');
             const container = document.getElementById('jitsi-container');
             if (!modal || !container) return;
@@ -4912,6 +5573,8 @@
                     email: currentUserEmail,
                 },
                 configOverwrite: {
+                    startWithVideoMuted: !!isAudioOnly,
+                    startAudioOnly: !!isAudioOnly,
                     prejoinPageEnabled: false,
                     prejoinConfig: {
                         enabled: false,
@@ -5014,61 +5677,87 @@
             const input = document.getElementById('chat-message-input');
             const text = input.value.trim();
 
-            // Se não houver texto E não houver anexo, não envia nada
-            if (!text && !attachedFile) return;
+            const totalAttachments = (editingMessageId ? editingKeepFiles.length : 0) + attachedFiles.length;
+            if (!text && totalAttachments === 0) return;
 
             const container = document.getElementById('chat-messages-container');
             if (!container) return;
 
+            const formData = new FormData();
+            formData.append('text', text);
+            if (attachedFiles.length > 0) {
+                attachedFiles.forEach(file => {
+                    formData.append('files[]', file);
+                });
+            }
+
+            input.disabled = true;
+
             // If in edit mode:
             if (editingMessageId) {
+                formData.append('_method', 'PUT');
+                formData.append('keep_files_sent', '1');
+                editingKeepFiles.forEach(f => {
+                    if (f.path) formData.append('keep_files[]', f.path);
+                });
+
                 fetch(`/messages/${editingMessageId}`, {
-                    method: 'PUT',
+                    method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify({ text: text })
+                    body: formData
                 })
                     .then(response => response.json())
                     .then(data => {
+                        input.disabled = false;
+                        input.focus();
                         if (data.success) {
-                            const targetEl = document.querySelector(`[data-message-id="${editingMessageId}"]`);
-                            if (targetEl) {
-                                const textSpan = targetEl.querySelector('.message-text');
-                                if (textSpan) {
-                                    textSpan.textContent = data.text;
-                                }
-                                const timeSpan = targetEl.querySelector('.message-time');
-                                if (timeSpan && !timeSpan.textContent.includes('EDITADA')) {
-                                    timeSpan.textContent += ' (EDITADA)';
+                            input.value = '';
+                            autoResizeChatInput();
+                            cancelAttachment();
+                            cancelEdit();
+
+                            if (data.message) {
+                                appendOrUpdateMessage(data.message);
+                            } else {
+                                const targetEl = document.querySelector(`[data-message-id="${editingMessageId}"]`);
+                                if (targetEl) {
+                                    const textSpan = targetEl.querySelector('.message-text');
+                                    if (textSpan) {
+                                        textSpan.textContent = data.text;
+                                    }
                                 }
                             }
                             showToast("Mensagem atualizada.");
-                            cancelEdit();
+                        } else {
+                            showToast(data.error || "Erro ao editar mensagem.");
                         }
                     })
                     .catch(err => {
+                        input.disabled = false;
+                        input.focus();
                         console.error(err);
                         showToast("Erro ao editar mensagem.");
                     });
                 return;
             }
 
-            // Send new message via AJAX
-            const formData = new FormData();
-            if (text) {
-                formData.append('text', text);
-            }
-            if (attachedFile) {
-                formData.append('file', attachedFile);
-            }
             if (replyingToMessage) {
-                formData.append('parent_id', replyingToMessage);
+                if (replyingToMessage === 'opening') {
+                    formData.append('is_opening', '1');
+                } else if (!isNaN(replyingToMessage)) {
+                    formData.append('parent_id', replyingToMessage);
+                }
+            } else if (whisperingToMessage) {
+                formData.append('type', 'whisper');
+                if (whisperingToMessage === 'opening') {
+                    formData.append('is_opening', '1');
+                } else if (!isNaN(whisperingToMessage)) {
+                    formData.append('parent_id', whisperingToMessage);
+                }
             }
-
-            input.disabled = true;
 
             fetch(`/solicitations/{{ $activeSolicitation->id ?? 0 }}/messages`, {
                 method: 'POST',
@@ -5079,7 +5768,6 @@
                 body: formData
             })
                 .then(response => {
-                    console.log("Send Message Response Status:", response.status, "URL:", response.url);
                     const contentType = response.headers.get("content-type");
                     if (contentType && contentType.indexOf("application/json") !== -1) {
                         return response.json();
@@ -5097,8 +5785,10 @@
                     if (data.success) {
                         // Clear inputs
                         input.value = '';
+                        autoResizeChatInput();
                         cancelAttachment();
                         cancelReply();
+                        cancelWhisper();
 
                         // Render dynamically
                         appendOrUpdateMessage(data.message);
@@ -5270,15 +5960,134 @@
                 });
         }
         // Image Lightbox functions
-        function openImageLightbox(src) {
+        // Carrossel de Imagens - Estado Global
+        let imageLightboxState = {
+            images: [],
+            currentIndex: 0
+        };
+
+        function openImageLightbox(src, allImages = null) {
             const modal = document.getElementById('image-lightbox-modal');
             const img = document.getElementById('lightbox-image-el');
             const link = document.getElementById('lightbox-download-link');
-            if (modal && img) {
-                img.src = src;
-                if (link) link.href = src;
-                modal.classList.remove('hidden');
+            const positionEl = document.getElementById('lightbox-position');
+            const thumbnailsContainer = document.getElementById('lightbox-thumbnails');
+            const prevBtn = document.getElementById('lightbox-prev-btn');
+            const nextBtn = document.getElementById('lightbox-next-btn');
+            
+            if (!modal || !img) return;
+            
+            // Se passou um array de imagens, usa esse; senão usa apenas a imagem clicada
+            imageLightboxState.images = allImages && Array.isArray(allImages) ? allImages : [src];
+            
+            // Determina o índice correto comparando de forma robusta as URLs
+            let foundIndex = imageLightboxState.images.indexOf(src);
+            if (foundIndex === -1) {
+                foundIndex = imageLightboxState.images.findIndex(item => {
+                    if (!item || !src) return false;
+                    const cleanItem = item.replace(/^(https?:\/\/[^\/]+)/, '');
+                    const cleanSrc = src.replace(/^(https?:\/\/[^\/]+)/, '');
+                    return cleanItem === cleanSrc;
+                });
             }
+            imageLightboxState.currentIndex = foundIndex !== -1 ? foundIndex : 0;
+            
+            // Atualiza a imagem e o link de download
+            const currentSrc = imageLightboxState.images[imageLightboxState.currentIndex];
+            img.src = currentSrc;
+            if (link) link.href = currentSrc;
+            
+            // Atualiza indicador de posição
+            if (positionEl) {
+                positionEl.textContent = `${imageLightboxState.currentIndex + 1} de ${imageLightboxState.images.length}`;
+            }
+            
+            // Mostra/esconde botões de navegação
+            if (imageLightboxState.images.length <= 1) {
+                if (prevBtn) prevBtn.classList.add('hidden');
+                if (nextBtn) nextBtn.classList.add('hidden');
+            } else {
+                if (prevBtn) prevBtn.classList.remove('hidden');
+                if (nextBtn) nextBtn.classList.remove('hidden');
+            }
+            
+            // Renderiza thumbnails se houver múltiplas imagens
+            if (imageLightboxState.images.length > 1) {
+                thumbnailsContainer.classList.remove('hidden');
+                thumbnailsContainer.innerHTML = '';
+                imageLightboxState.images.forEach((imgSrc, index) => {
+                    const thumb = document.createElement('button');
+                    thumb.type = 'button';
+                    const isActive = index === imageLightboxState.currentIndex;
+                    thumb.className = `flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-3 transition-all cursor-pointer focus:outline-none ${
+                        isActive ? 'border-white scale-105 ring-2 ring-white/50' : 'border-white/30 opacity-60 hover:opacity-100'
+                    }`;
+                    thumb.innerHTML = `<img src="${imgSrc}" alt="Thumb ${index + 1}" class="w-full h-full object-cover">`;
+                    thumb.style.boxShadow = isActive ? '0 8px 25px rgba(218, 41, 28, 0.5), inset 0 0 0 1px rgba(255,255,255,0.3)' : '';
+                    thumb.onclick = () => goToImage(index);
+                    thumbnailsContainer.appendChild(thumb);
+                });
+            } else {
+                thumbnailsContainer.classList.add('hidden');
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function nextImage() {
+            if (imageLightboxState.images.length <= 1) return;
+            imageLightboxState.currentIndex = (imageLightboxState.currentIndex + 1) % imageLightboxState.images.length;
+            updateLightboxImage();
+        }
+
+        function previousImage() {
+            if (imageLightboxState.images.length <= 1) return;
+            imageLightboxState.currentIndex = (imageLightboxState.currentIndex - 1 + imageLightboxState.images.length) % imageLightboxState.images.length;
+            updateLightboxImage();
+        }
+
+        function goToImage(index) {
+            if (index < 0 || index >= imageLightboxState.images.length) return;
+            imageLightboxState.currentIndex = index;
+            updateLightboxImage();
+        }
+
+        function updateLightboxImage() {
+            const img = document.getElementById('lightbox-image-el');
+            const link = document.getElementById('lightbox-download-link');
+            const positionEl = document.getElementById('lightbox-position');
+            
+            const currentSrc = imageLightboxState.images[imageLightboxState.currentIndex];
+            
+            // Fade transition
+            img.style.opacity = '0.5';
+            setTimeout(() => {
+                img.src = currentSrc;
+                if (link) link.href = currentSrc;
+                img.style.opacity = '1';
+            }, 100);
+            
+            // Atualiza posição
+            if (positionEl) {
+                positionEl.textContent = `${imageLightboxState.currentIndex + 1} de ${imageLightboxState.images.length}`;
+            }
+            
+            // Atualiza thumbnails
+            const thumbnails = document.querySelectorAll('#lightbox-thumbnails button');
+            thumbnails.forEach((thumb, index) => {
+                const isActive = index === imageLightboxState.currentIndex;
+                if (isActive) {
+                    thumb.classList.add('border-white', 'scale-105', 'ring-2', 'ring-white/50');
+                    thumb.classList.remove('border-white/30', 'opacity-60');
+                    thumb.style.boxShadow = '0 8px 25px rgba(218, 41, 28, 0.5), inset 0 0 0 1px rgba(255,255,255,0.3)';
+                    thumb.style.opacity = '1';
+                } else {
+                    thumb.classList.remove('border-white', 'scale-105', 'ring-2', 'ring-white/50');
+                    thumb.classList.add('border-white/30', 'opacity-60');
+                    thumb.style.boxShadow = '';
+                    thumb.style.opacity = '0.6';
+                }
+            });
         }
 
         function closeImageLightbox() {
@@ -5288,12 +6097,48 @@
             }
         }
 
-        // Permitir fechar o lightbox com a tecla ESC
+        // Permitir fechar o lightbox com a tecla ESC e navegar com setas
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
-                closeImageLightbox();
+            const modal = document.getElementById('image-lightbox-modal');
+            if (modal && !modal.classList.contains('hidden')) {
+                if (e.key === 'Escape') {
+                    closeImageLightbox();
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    nextImage();
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    previousImage();
+                }
             }
         });
+
+        // Suporte a swipe/drag para navegar
+        let swipeStartX = 0;
+        let swipeStartY = 0;
+        
+        document.getElementById('image-lightbox-modal')?.addEventListener('touchstart', (e) => {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+        }, false);
+
+        document.getElementById('image-lightbox-modal')?.addEventListener('touchend', (e) => {
+            const swipeEndX = e.changedTouches[0].clientX;
+            const swipeEndY = e.changedTouches[0].clientY;
+            const diffX = swipeStartX - swipeEndX;
+            const diffY = swipeStartY - swipeEndY;
+            
+            // Só considera swipe se movimento horizontal > movimento vertical
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                if (diffX > 0) {
+                    // Swipe para esquerda = próxima imagem
+                    nextImage();
+                } else {
+                    // Swipe para direita = imagem anterior
+                    previousImage();
+                }
+            }
+        }, false);
 
         // Filtros e Busca de Mensagens na Barra Lateral
         let activeChatFilter = 'all';
@@ -5361,9 +6206,14 @@
         }
 
         // ---------- End Call Modal ----------
-        function showEndCallModal(callId) {
+        function showEndCallModal(callId, isAudioOnly = false) {
             const modal = document.getElementById('end-call-modal');
             if (!modal) return;
+            const iconContainer = document.getElementById('end-call-modal-icon');
+            if (iconContainer) {
+                const iconSrc = (isAudioOnly === true || isAudioOnly === 'true') ? '/icones/Icone Chamada.png' : '/icones/Icone Video Chamada.png';
+                iconContainer.innerHTML = `<img src="${iconSrc}" alt="Chamada" class="w-7 h-7 object-contain filter brightness-0 invert">`;
+            }
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             modal.dataset.callId = callId;
@@ -5581,7 +6431,7 @@
                     
                     // Redireciona para o index para atualizar a lista sem o chamado que foi transferido
                     setTimeout(() => {
-                        window.location.href = "{{ auth()->user()->role === 'atendente' ? route('atendente.chat.index') : (auth()->user()->role === 'admin' ? route('admin.chat.index') : route('chat.index')) }}";
+                        window.location.href = "{{ $currentUserRole === 'admin' ? route('admin.chat.index') : ($currentUserRole === 'atendente' ? route('atendente.chat.index') : route('chat.index')) }}";
                     }, 1000);
                 } else {
                     showToast(body.message || body.error || 'Erro ao abrir o ticket.');
@@ -5624,15 +6474,13 @@
 
             {{-- Corpo: ícone + textos --}}
             <div class="flex flex-col items-center gap-3 mb-6">
-                <div class="w-14 h-14 rounded-full flex items-center justify-center shadow-md"
+                <div id="end-call-modal-icon" class="w-14 h-14 rounded-full flex items-center justify-center shadow-md"
                      style="background: linear-gradient(135deg, #a01724 0%, #DA291C 100%);">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" class="w-7 h-7">
-                        <path d="M4.5 4.5A2.25 2.25 0 0 0 2.25 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-10.5A2.25 2.25 0 0 0 15 4.5H4.5ZM19.24 7.63l-2.99 2.24v4.26l2.99 2.24A1.5 1.5 0 0 0 21.75 15.1V8.9a1.5 1.5 0 0 0-2.51-1.27Z" />
-                    </svg>
+                    <img src="/icones/Icone Video Chamada.png" alt="Chamada" class="w-7 h-7 object-contain filter brightness-0 invert">
                 </div>
 
                 <p class="checklist-figma-question text-center">
-                    Deseja realmente encerrar esta videochamada?
+                    Deseja realmente encerrar esta chamada?
                 </p>
                 <p style="font-size:13px; color:#6b7280; font-weight:500; text-align:center; line-height:1.45;">
                     Esta ação encerrará a chamada para <strong style="color:#374151;">todos os participantes</strong>
